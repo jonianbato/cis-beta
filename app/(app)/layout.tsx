@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 import AppShell from "../app-shell";
+import InstallBanner from "../install-banner";
 
 /** Wraps the signed-in pages in the shell; the auth pages sit outside this group. */
 export default function AppGroupLayout({ children }: { children: ReactNode }) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <InstallBanner />
+      {children}
+    </AppShell>
+  );
 }
