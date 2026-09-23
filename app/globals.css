@@ -3,3 +3,25 @@
 /* Typography, color and background come from StPeterProvider + Chakra's
    theme, so no body-level font or color overrides here — they would win
    over the design system by specificity. */
+
+/* The sweep across the Personnel Scan viewfinder. A keyframes rule cannot be
+   expressed as a Chakra style prop, so it lives here rather than in the
+   component that uses it (app/(app)/scan-qr/screen-scan.tsx). */
+@keyframes osp-scanline {
+  0% {
+    top: 8%;
+  }
+  50% {
+    top: 88%;
+  }
+  100% {
+    top: 8%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-osp-scanline] {
+    animation: none;
+    top: 48%;
+  }
+}
