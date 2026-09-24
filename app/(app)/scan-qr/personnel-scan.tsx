@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Flex } from "@chakra-ui/react";
 import { Page } from "osp-ui-kit";
 import { useCodeScanner } from "@/lib/use-code-scanner";
+import { playScanFeedback, unlockScanSound } from "@/lib/scan-feedback";
 import {
   DEMO_OTP,
   DESTINATION_CHAPEL,
@@ -204,6 +205,23 @@ export default function PersonnelScan() {
     },
     [],
   );
+
+  // Any tap on the page counts as the gesture that lets audio play, so the
+  // camera's first read can beep even though it happens without one.
+  useEffect(() => {
+    document.addEventListener("pointerdown", unlockScanSound);
+    return () => document.removeEventListener("pointerdown", unlockScanSound);
+  }, []);
+
+  // Every scan is heard: a new accepted code or a new rejection. Keyed on the
+  // values, so a camera re-reading the same rejected code does not repeat it.
+  useEffect(() => {
+    if (state.scanned) playScanFeedback("ok");
+  }, [state.scanned]);
+
+  useEffect(() => {
+    if (state.scanError) playScanFeedback("error");
+  }, [state.scanError]);
 
   // The OTP screen is the only one that shows a running clock.
   useEffect(() => {
