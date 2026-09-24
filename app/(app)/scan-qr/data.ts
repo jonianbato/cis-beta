@@ -6,13 +6,20 @@
  * and which service it belongs to.
  */
 
-export type Pipeline = "retrieval" | "embalm";
+export type Pipeline = "retrieval" | "embalm" | "viewing";
+
+/**
+ * What a trip ticket is for. A retrieval brings the deceased in to the chapel;
+ * a viewing takes the casket out of the chapel to a wake held elsewhere.
+ */
+export type TripType = "retrieval" | "viewing";
 
 /** What a code's prefix says it is. Drives every validation in the flow. */
 export type DocKind = "trip" | "embalm" | "tag" | "wb" | "ck";
 
 type TripRecord = {
   caseId: string;
+  tripType: TripType;
   deceased: string;
   vehicle: string;
   driver: string;
@@ -20,6 +27,8 @@ type TripRecord = {
   dob: string;
   dod: string;
   pickup: string;
+  /** Where a viewing trip delivers the casket. Retrievals end at the chapel. */
+  destination?: string;
   casket: string;
   contact: string;
   phone: string;
@@ -32,13 +41,25 @@ type EmbalmTicketRecord = {
   scheduled: string;
 };
 
+/** Where a casketed deceased lies in state, keyed by the casket tag. */
+type CasketRecord = {
+  caseId: string;
+  chapel: string;
+  room: string;
+  floor: string;
+  viewing: string;
+  interment: string;
+  roomStatus: string;
+};
+
 /**
  * A resolved document: the record for the code itself, over the trip record of
  * the service it belongs to. A toe tag therefore knows the date of death and
  * the family contact, which is what the review and OTP steps need.
  */
 export type ServiceDoc = Partial<TripRecord> &
-  Partial<EmbalmTicketRecord> & {
+  Partial<EmbalmTicketRecord> &
+  Partial<CasketRecord> & {
     code: string;
     docType: string;
     kind: DocKind;
@@ -48,6 +69,7 @@ export type ServiceDoc = Partial<TripRecord> &
 const TRIPS: Record<string, TripRecord> = {
   "TT-2026-000123": {
     caseId: "RET-2026-00123",
+    tripType: "retrieval",
     deceased: "Juan Dela Cruz",
     vehicle: "VAN-001",
     driver: "Reyes, Mario",
@@ -61,6 +83,7 @@ const TRIPS: Record<string, TripRecord> = {
   },
   "TT-2026-000124": {
     caseId: "RET-2026-00124",
+    tripType: "retrieval",
     deceased: "Rosario Magbanua",
     vehicle: "VAN-001",
     driver: "Reyes, Mario",
@@ -71,6 +94,21 @@ const TRIPS: Record<string, TripRecord> = {
     casket: "ST. DOROTHY · Wood",
     contact: "Arnel Magbanua",
     phone: "0928 *** 1187",
+  },
+  "TT-2026-000125": {
+    caseId: "RET-2026-00123",
+    tripType: "viewing",
+    deceased: "Juan Dela Cruz",
+    vehicle: "HEARSE-02",
+    driver: "Reyes, Mario",
+    departure: "2026-09-14 07:00 AM",
+    dob: "1965-03-14 (61)",
+    dod: "2026-09-11 14:20",
+    pickup: "St. Peter Chapel · Commonwealth · Chapel 3",
+    destination: "Residence · Brgy. Batasan Hills, QC",
+    casket: "ST. HYACINTH · Wood",
+    contact: "Maria Dela Cruz",
+    phone: "0917 *** 4521",
   },
 };
 
@@ -98,10 +136,30 @@ const TAGS: Record<string, { caseId: string; deceased: string }> = {
   },
 };
 
-/** Wristbands and casket tags carry nothing of their own but the service. */
+const CASKETS: Record<string, CasketRecord> = {
+  "CK-2026-000123": {
+    caseId: "RET-2026-00123",
+    chapel: "St. Peter Chapel · Commonwealth",
+    room: "Chapel 3 · St. Joseph",
+    floor: "2nd floor",
+    viewing: "Sep 13 – Sep 16, 2026",
+    interment: "Sep 17, 2026 · 9:00 AM",
+    roomStatus: "Occupied · wake ongoing",
+  },
+  "CK-2026-000124": {
+    caseId: "RET-2026-00124",
+    chapel: "St. Peter Chapel · Commonwealth",
+    room: "Chapel 5 · St. Therese",
+    floor: "Ground floor",
+    viewing: "Sep 13 – Sep 15, 2026",
+    interment: "Sep 16, 2026 · 10:00 AM",
+    roomStatus: "Reserved · being prepared",
+  },
+};
+
+/** Wristbands carry nothing of their own but the service. */
 const EXTRA_DOCS: Record<string, { caseId: string }> = {
   "WB-2026-000123": { caseId: "RET-2026-00123" },
-  "CK-2026-000123": { caseId: "RET-2026-00123" },
   "WB-2026-000124": { caseId: "RET-2026-00124" },
 };
 
@@ -119,12 +177,19 @@ export function lookupDoc(raw: string): ServiceDoc | null {
     .trim()
     .toUpperCase();
   const record =
-    TRIPS[code] ?? EMBALM_TICKETS[code] ?? TAGS[code] ?? EXTRA_DOCS[code];
+    TRIPS[code] ??
+    EMBALM_TICKETS[code] ??
+    TAGS[code] ??
+    CASKETS[code] ??
+    EXTRA_DOCS[code];
   if (!record) return null;
 
   const prefix = code.split("-")[0];
+  // Documents other than a trip ticket inherit the retrieval trip's record.
   const base: Partial<TripRecord> =
-    Object.values(TRIPS).find((trip) => trip.caseId === record.caseId) ?? {};
+    Object.values(TRIPS).find(
+      (trip) => trip.caseId === record.caseId && trip.tripType === "retrieval",
+    ) ?? {};
   const kind: DocKind =
     prefix === "TT"
       ? "trip"
@@ -141,8 +206,12 @@ export function lookupDoc(raw: string): ServiceDoc | null {
   };
 }
 
+/** The retrieval ticket of a service — the trip a toe tag belongs to. */
 export function findTripCode(caseId: string): string | undefined {
-  return Object.keys(TRIPS).find((code) => TRIPS[code].caseId === caseId);
+  return Object.keys(TRIPS).find(
+    (code) =>
+      TRIPS[code].caseId === caseId && TRIPS[code].tripType === "retrieval",
+  );
 }
 
 export function findTagCode(caseId: string): string | undefined {
@@ -157,8 +226,9 @@ export function embalmerFor(caseId: string): string {
   return ticket ? EMBALM_TICKETS[ticket].embalmer : "";
 }
 
-/** Which of the seven scan screens is showing, for hint and sample copy. */
+/** Which of the eight scan screens is showing, for hint and sample copy. */
 export type ScanKind =
+  | "lookup"
   | "trip"
   | "tag"
   | "process"
@@ -171,14 +241,24 @@ export type ScanKind =
 export function sampleCodes(kind: ScanKind, pipeline: Pipeline | ""): string[] {
   switch (kind) {
     case "casket":
-      return ["CK-2026-000123"];
+    case "lookup":
+      return Object.keys(CASKETS);
     case "checkTrip":
-      return Object.keys(pipeline === "embalm" ? EMBALM_TICKETS : TRIPS);
+      return pipeline === "embalm"
+        ? Object.keys(EMBALM_TICKETS)
+        : Object.keys(TRIPS).filter(
+            (code) => TRIPS[code].tripType === "retrieval",
+          );
     case "checkTag":
     case "attach":
       return Object.keys(TAGS);
     case "process":
-      return ["TT-2026-000123", "ET-2026-000123", "TAG-2026-000123"];
+      return [
+        "TT-2026-000123",
+        "TT-2026-000125",
+        "ET-2026-000123",
+        "TAG-2026-000123",
+      ];
     default:
       return [
         "TT-2026-000123",
@@ -240,6 +320,21 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
       tasks: ["depart", "arrive"],
     },
   ],
+  viewing: [
+    {
+      key: "casketcheck",
+      label: "Casket & trip ticket matching",
+      hint: "Before leaving the chapel · scan the casket barcode to match the trip ticket",
+      tasks: ["scanCasket"],
+      otp: false,
+    },
+    {
+      key: "viewtrip",
+      label: "Trip to viewing venue",
+      hint: "Depart the chapel and arrive at the venue · family OTP on handover",
+      tasks: ["depart", "arrive"],
+    },
+  ],
   embalm: [
     {
       key: "embcheck",
@@ -271,13 +366,6 @@ export const BODY_CONDITIONS = [
   "Early decomposition",
   "Trauma",
 ];
-
-/** The signed-in personnel. Demo values until the flow reads the session. */
-export const OPERATOR = {
-  greetingName: "Mario",
-  initials: "MR",
-  role: "Driver · VAN-001 · Commonwealth",
-};
 
 export const DESTINATION_CHAPEL = "St. Peter Chapel · Commonwealth";
 

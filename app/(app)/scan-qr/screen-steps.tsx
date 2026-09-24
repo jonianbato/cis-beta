@@ -152,14 +152,22 @@ export function ProcessScreen({
   );
 }
 
-/** Departure from the retrieval site, or arrival at the chapel. */
+/**
+ * One leg of a trip: departure from where it starts, or arrival where it
+ * ends — the retrieval site to the chapel, or the chapel to a viewing venue.
+ */
 export function MoveScreen({
   arriving,
+  fromLabel,
+  toLabel,
   from,
   to,
   rows,
 }: {
   arriving: boolean;
+  /** The start and end as a phrase, e.g. "the chapel". */
+  fromLabel: string;
+  toLabel: string;
   from: string;
   to: string;
   rows: [string, string][];
@@ -168,8 +176,8 @@ export function MoveScreen({
     <>
       <Text fontSize="15px" fontWeight={800} color={C.ink}>
         {arriving
-          ? "Confirm arrival at the chapel"
-          : "Confirm departure from the retrieval site"}
+          ? `Confirm arrival at ${toLabel}`
+          : `Confirm departure from ${fromLabel}`}
       </Text>
 
       <Panel p="14px" display="flex" gap="12px">

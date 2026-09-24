@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import { ChevronRight, ScanQrCode, ShieldCheck } from "lucide-react";
+import { Barcode, ChevronRight, ScanQrCode, ShieldCheck } from "lucide-react";
 import { C } from "./theme";
 import { Panel } from "./chrome";
 
@@ -21,24 +21,23 @@ type HomeCard = {
  *
  * Matching is a spot check that answers one question — are these two documents
  * the same deceased. Processing is the full run, where the scanned service
- * decides its own next step.
+ * decides its own next step. Casket lookup is read-only: it answers who is in
+ * a casket and where they lie in state.
  */
 export function HomeScreen({
-  greetingName,
-  role,
   matchedServices,
   hasEmbalmed,
   log,
   onOpenMatching,
   onOpenProcess,
+  onOpenLookup,
 }: {
-  greetingName: string;
-  role: string;
   matchedServices: number;
   hasEmbalmed: boolean;
   log: LogEntry[];
   onOpenMatching: () => void;
   onOpenProcess: () => void;
+  onOpenLookup: () => void;
 }) {
   const cards: HomeCard[] = [
     {
@@ -53,25 +52,24 @@ export function HomeScreen({
     },
     {
       title: "Scan QR to Process",
-      sub: "Retrieval trip or embalming · step by step",
+      sub: "Retrieval, outside viewing or embalming · step by step",
       state: "System shows the next step to authorize",
       good: hasEmbalmed,
       icon: ShieldCheck,
       onOpen: onOpenProcess,
     },
+    {
+      title: "Casket Lookup",
+      sub: "Scan a casket barcode · deceased and room details",
+      state: "View only · no authorization needed",
+      good: false,
+      icon: Barcode,
+      onOpen: onOpenLookup,
+    },
   ];
 
   return (
     <>
-      <Box display="flex" flexDirection="column" gap="4px">
-        <Text fontSize="20px" fontWeight={800} color={C.ink}>
-          Good morning, {greetingName}
-        </Text>
-        <Text fontSize="12.5px" color={C.sage}>
-          {role}
-        </Text>
-      </Box>
-
       {cards.map((card) => (
         <chakra.button
           key={card.title}

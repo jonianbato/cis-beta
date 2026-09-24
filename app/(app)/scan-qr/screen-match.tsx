@@ -1,6 +1,7 @@
 "use client";
 
-import { Box, Text } from "@chakra-ui/react";
+import { Box, Flex, Text } from "@chakra-ui/react";
+import { BedDouble, UserRound } from "lucide-react";
 import type { ServiceDoc } from "./data";
 import { C, MONO } from "./theme";
 import { InlineRow, Outcome, Panel, StackedRow } from "./chrome";
@@ -20,7 +21,12 @@ export function DetailsScreen({ doc }: { doc: ServiceDoc }) {
         ? [
             ["Deceased name", doc.deceased],
             ["Service ID", doc.caseId],
+            [
+              "Trip type",
+              doc.tripType === "viewing" ? "Outside chapel viewing" : "Retrieval",
+            ],
             ["Pickup location", doc.pickup],
+            ...(doc.destination ? [["Destination", doc.destination]] : []),
             ["Vehicle", doc.vehicle],
             ["Driver", doc.driver],
             ["Departure", doc.departure],
@@ -54,6 +60,92 @@ export function DetailsScreen({ doc }: { doc: ServiceDoc }) {
           />
         ))}
       </Panel>
+    </>
+  );
+}
+
+/** A titled group of rows, for screens that show more than one record. */
+function Section({
+  title,
+  icon: Icon,
+  rows,
+}: {
+  title: string;
+  icon: typeof UserRound;
+  rows: [string, string | undefined][];
+}) {
+  return (
+    <Panel overflow="hidden">
+      <Flex
+        align="center"
+        gap="8px"
+        px="14px"
+        py="10px"
+        bg={C.tintBg}
+        borderBottom="1px solid"
+        borderColor={C.lineSoft}
+        fontSize="12px"
+        fontWeight={800}
+        color={C.ink}>
+        <Icon size={15} color={C.green} strokeWidth={2} />
+        {title}
+      </Flex>
+      {rows.map(([label, value], index) => (
+        <StackedRow
+          key={label}
+          label={label}
+          value={value ?? "—"}
+          last={index === rows.length - 1}
+        />
+      ))}
+    </Panel>
+  );
+}
+
+/**
+ * What a casket barcode says: who is in the casket, and the room they lie in
+ * state in — so staff can find or confirm a deceased without the paperwork.
+ */
+export function CasketDetailsScreen({ doc }: { doc: ServiceDoc }) {
+  return (
+    <>
+      <Box
+        borderRadius="14px"
+        bg={C.green}
+        color={C.surface}
+        textAlign="center"
+        p="12px">
+        <Text fontSize="12px" fontWeight={700} opacity={0.9}>
+          {doc.docType}
+        </Text>
+        <Text fontSize="18px" fontWeight={800} fontFamily={MONO} mt="2px">
+          {doc.code}
+        </Text>
+      </Box>
+      <Section
+        title="Deceased details"
+        icon={UserRound}
+        rows={[
+          ["Name", doc.deceased],
+          ["Date of birth · age", doc.dob],
+          ["Date of death", doc.dod],
+          ["Service ID", doc.caseId],
+          ["Casket", doc.casket],
+          ["Family contact", doc.contact && `${doc.contact} · ${doc.phone}`],
+        ]}
+      />
+      <Section
+        title="Room details"
+        icon={BedDouble}
+        rows={[
+          ["Room", doc.room],
+          ["Chapel", doc.chapel],
+          ["Floor", doc.floor],
+          ["Viewing", doc.viewing],
+          ["Interment", doc.interment],
+          ["Room status", doc.roomStatus],
+        ]}
+      />
     </>
   );
 }

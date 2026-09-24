@@ -7,7 +7,6 @@ import { useCodeScanner } from "@/lib/use-code-scanner";
 import {
   DEMO_OTP,
   DESTINATION_CHAPEL,
-  OPERATOR,
   OTP_TTL_MS,
   PIPELINES,
   embalmerFor,
@@ -31,7 +30,11 @@ import {
 import { HomeScreen, type LogEntry } from "./screen-home";
 import { useFlowHistory } from "./use-flow-history";
 import { ScanScreen } from "./screen-scan";
-import { DetailsScreen, ResultScreen } from "./screen-match";
+import {
+  CasketDetailsScreen,
+  DetailsScreen,
+  ResultScreen,
+} from "./screen-match";
 import {
   AuthorizeScreen,
   MoveScreen,
@@ -44,6 +47,8 @@ import { EmbalmScreen, emptyEmbalmForm, type EmbalmForm } from "./screen-embalm"
 
 type Screen =
   | "home"
+  | "scanLookup"
+  | "casketDetails"
   | "scanTrip"
   | "tripDetails"
   | "scanTag"
@@ -117,6 +122,7 @@ const INITIAL: FlowState = {
 };
 
 const SCAN_SCREENS: Screen[] = [
+  "scanLookup",
   "scanTrip",
   "scanTag",
   "scanProcess",
@@ -145,6 +151,7 @@ const PIPE_SCREENS: Screen[] = [
 ];
 
 const MATCH_FLOW: Screen[] = ["scanTrip", "tripDetails", "scanTag", "result"];
+const LOOKUP_FLOW: Screen[] = ["scanLookup", "casketDetails"];
 const PROCESS_FLOW: Screen[] = [
   "scanProcess",
   "processPick",
@@ -250,14 +257,30 @@ export default function PersonnelScan() {
 
   const inPipe = PIPE_SCREENS.includes(state.screen) && !!state.pipeline;
   const inMatchFlow = MATCH_FLOW.includes(state.screen);
-  const steps = inMatchFlow ? MATCH_FLOW : PROCESS_FLOW;
+  const inLookupFlow = LOOKUP_FLOW.includes(state.screen);
+  const steps = inMatchFlow
+    ? MATCH_FLOW
+    : inLookupFlow
+      ? LOOKUP_FLOW
+      : PROCESS_FLOW;
   const idx = steps.indexOf(state.screen);
   const showProgress =
-    inMatchFlow || PROCESS_FLOW.includes(state.screen) || inPipe;
+    inMatchFlow || inLookupFlow || PROCESS_FLOW.includes(state.screen) || inPipe;
   const inFlow = state.screen !== "home";
 
   const pipelineLabel =
-    state.pipeline === "embalm" ? "Embalming" : "Retrieval trip";
+    state.pipeline === "embalm"
+      ? "Embalming"
+      : state.pipeline === "viewing"
+        ? "Outside viewing trip"
+        : "Retrieval trip";
+  const viewing = state.pipeline === "viewing";
+  // Where the current trip ends: the chapel for a retrieval, the wake venue
+  // for a viewing.
+  const tripTo = viewing
+    ? (trip?.destination ?? "Viewing venue")
+    : DESTINATION_CHAPEL;
+  const tripToShort = viewing ? "viewing venue" : "chapel";
   const stepLabel = curStep?.label ?? "";
 
   const remaining = state.otpSentAt
@@ -297,6 +320,11 @@ export default function PersonnelScan() {
       });
 
       switch (s.screen) {
+        case "scanLookup":
+          if (!doc || doc.kind !== "ck")
+            return reject("Scan the barcode on the casket tag (CK-…).");
+          return accept({ trip: doc, tag: null, pipeline: "" });
+
         case "scanTrip":
           if (!doc) return reject(`${code || "That code"} is not a QR on file.`);
           return accept({ trip: doc });
@@ -352,10 +380,25 @@ export default function PersonnelScan() {
         case "scanCasket":
           if (!doc || doc.kind !== "ck")
             return reject("Scan the barcode on the casket tag (CK-…).");
-          if (!s.trip || doc.caseId !== s.trip.caseId)
-            return reject(
-              `${doc.code} is assigned to ${doc.deceased}. Wrong casket.`,
-            );
+          if (!s.trip || doc.caseId !== s.trip.caseId) {
+            if (s.pipeline !== "viewing")
+              return reject(
+                `${doc.code} is assigned to ${doc.deceased}. Wrong casket.`,
+              );
+            // Leaving with the wrong casket is the failure this trip's check
+            // exists for, so it is logged like a toe-tag mismatch.
+            const entry: LogEntry = {
+              text: `Casket mismatch before viewing trip · ${doc.code} ≠ ${s.trip?.code}`,
+              tone: "bad",
+              at: stamp(),
+            };
+            return {
+              ...reject(
+                `MISMATCH — ${doc.code} is for ${doc.deceased}, but trip ticket ${s.trip?.code} is for ${s.trip?.deceased}. Check that the deceased in the casket matches the trip ticket. Do not leave the chapel; notify your supervisor.`,
+              ),
+              log: [entry, ...s.log].slice(0, LOG_LIMIT),
+            };
+          }
           return accept({ casketTag: doc.code });
 
         case "scanAttach":
@@ -375,7 +418,12 @@ export default function PersonnelScan() {
               `${code || "That code"} is not a trip ticket or toe tag on file.`,
             );
           const isEmbalming = doc.kind === "embalm";
-          const service = lookupDoc(isEmbalming ? doc.code : tripCode);
+          // A viewing ticket is its own trip; any other document of the
+          // service resolves to its retrieval ticket.
+          const isViewing = doc.kind === "trip" && doc.tripType === "viewing";
+          const service = lookupDoc(
+            isEmbalming || isViewing ? doc.code : tripCode,
+          );
           if (!service)
             return reject(
               `${code} is not a trip ticket or toe tag on file.`,
@@ -383,7 +431,8 @@ export default function PersonnelScan() {
           return accept({
             trip: service,
             tag: null,
-            pipeline: isEmbalming ? "embalm" : "retrieval",
+            casketTag: "",
+            pipeline: isEmbalming ? "embalm" : isViewing ? "viewing" : "retrieval",
           });
         }
 
@@ -567,7 +616,9 @@ export default function PersonnelScan() {
   // ------------------------------------------------------------ scan copy
 
   const scanKind: ScanKind =
-    state.screen === "scanCasket"
+    state.screen === "scanLookup"
+      ? "lookup"
+      : state.screen === "scanCasket"
       ? "casket"
       : state.screen === "checkTrip"
         ? "checkTrip"
@@ -583,8 +634,12 @@ export default function PersonnelScan() {
 
   const who = trip?.deceased ?? "this service";
   const scanHint =
-    scanKind === "casket"
-      ? `Scan the barcode on the casket tag for ${who} · ${trip?.casket ?? ""}`
+    scanKind === "lookup"
+      ? "Scan the barcode on any casket tag to see who is in the casket and which room they are in."
+      : scanKind === "casket"
+      ? viewing
+        ? `Before leaving the chapel, scan the casket barcode. It must be ${who}'s casket to match trip ticket ${trip?.code ?? ""}.`
+        : `Scan the barcode on the casket tag for ${who} · ${trip?.casket ?? ""}`
       : scanKind === "checkTrip"
         ? state.pipeline === "embalm"
           ? `Before embalming, scan the embalming ticket for ${who}.`
@@ -608,7 +663,9 @@ export default function PersonnelScan() {
   // ---------------------------------------------------------------- titles
 
   const titles: Record<Screen, [string, string]> = {
-    home: ["Personnel App", "Commonwealth · Trip tools"],
+    home: ["Scan QR Facility", "Service Verification"],
+    scanLookup: ["Scan Casket Barcode", "Casket Lookup"],
+    casketDetails: [trip?.deceased ?? "Casket Details", trip?.room ?? "Casket Lookup"],
     scanTrip: ["Scan First QR", "Any service document"],
     tripDetails: [trip ? `${trip.docType} Details` : "Details", "QR Matching"],
     scanTag: [
@@ -616,14 +673,17 @@ export default function PersonnelScan() {
       trip ? `Compare with ${trip.code}` : "QR Matching",
     ],
     result: [matched ? "Match Confirmation" : "Mismatch", "QR Matching"],
-    scanProcess: ["Scan QR to Process", "Retrieval or embalming"],
+    scanProcess: ["Scan QR to Process", "Retrieval, viewing or embalming"],
     processPick: ["Service Process", pipelineLabel],
     scanAttach: [
       state.pipeline === "embalm" ? "Toe Tag Verification" : "Scan Toe Tag",
       trip?.deceased ?? "",
     ],
     casket: ["Casketing", trip?.deceased ?? ""],
-    scanCasket: ["Scan Casket Barcode", trip?.deceased ?? ""],
+    scanCasket: [
+      "Scan Casket Barcode",
+      viewing ? "Casket matching · before the trip" : (trip?.deceased ?? ""),
+    ],
     checkTrip: [
       state.pipeline === "embalm" ? "Scan Embalming Ticket" : "Scan Trip Ticket",
       state.pipeline === "embalm"
@@ -636,8 +696,14 @@ export default function PersonnelScan() {
         ? "Matching · preparation room"
         : "Departure check · at the chapel",
     ],
-    depart: ["Depart to Chapel", "Retrieval trip"],
-    arrive: ["Arrive at Chapel", "Retrieval trip"],
+    depart: [
+      viewing ? "Depart to Viewing Venue" : "Depart to Chapel",
+      pipelineLabel,
+    ],
+    arrive: [
+      viewing ? "Arrive at Viewing Venue" : "Arrive at Chapel",
+      pipelineLabel,
+    ],
     embalm: ["Embalming Summary", "Preparation room"],
     photo: ["Add Deceased Photo", stepLabel],
     review: ["Review Details", stepLabel],
@@ -651,6 +717,27 @@ export default function PersonnelScan() {
   let footer: { primary: FooterAction; secondary?: FooterAction } | null = null;
 
   switch (state.screen) {
+    case "scanLookup":
+      footer = {
+        primary: {
+          label: "View details",
+          enabled: !!state.scanned,
+          onClick: () => go("casketDetails"),
+        },
+      };
+      break;
+    case "casketDetails":
+      footer = {
+        primary: {
+          label: "Scan another casket",
+          onClick: () => go("scanLookup", { trip: null }),
+        },
+        secondary: {
+          label: "Done",
+          onClick: () => go("home", { trip: null }),
+        },
+      };
+      break;
     case "scanTrip":
       footer = {
         primary: {
@@ -728,7 +815,7 @@ export default function PersonnelScan() {
               label: "Back to menu",
               onClick: () => {
                 addLog(
-                  `${state.pipeline === "embalm" ? "Embalming" : "Retrieval"} complete · ${trip?.deceased}`,
+                  `${pipelineLabel} complete · ${trip?.deceased}`,
                   "good",
                 );
                 go("home", {
@@ -793,9 +880,16 @@ export default function PersonnelScan() {
     case "scanCasket":
       footer = {
         primary: {
-          label: "Next",
+          label: viewing ? "Confirm match · proceed to trip" : "Next",
           enabled: !!state.scanned,
-          onClick: completeTask,
+          onClick: () => {
+            if (viewing && trip)
+              addLog(
+                `Matched ${trip.code} ↔ ${state.casketTag} · cleared for viewing trip`,
+                "good",
+              );
+            completeTask();
+          },
         },
       };
       break;
@@ -823,7 +917,7 @@ export default function PersonnelScan() {
           label: "Confirm departure",
           onClick: () => {
             if (!trip) return;
-            addLog(`Departed to chapel · ${trip.deceased}`, "good");
+            addLog(`Departed to ${tripToShort} · ${trip.deceased}`, "good");
             setState((s) => ({ ...s, departedAt: stamp() }));
             completeTask();
           },
@@ -833,10 +927,10 @@ export default function PersonnelScan() {
     case "arrive":
       footer = {
         primary: {
-          label: "Confirm arrival at chapel",
+          label: `Confirm arrival at ${tripToShort}`,
           onClick: () => {
             if (!trip) return;
-            addLog(`Arrived at chapel · ${trip.deceased}`, "good");
+            addLog(`Arrived at ${tripToShort} · ${trip.deceased}`, "good");
             completeTask();
           },
         },
@@ -916,8 +1010,6 @@ export default function PersonnelScan() {
           <Flex direction="column" gap="14px">
             {state.screen === "home" && (
               <HomeScreen
-                greetingName={OPERATOR.greetingName}
-                role={OPERATOR.role}
                 matchedServices={
                   new Set(state.clearedCases.map((key) => key.split(":")[1])).size
                 }
@@ -927,6 +1019,9 @@ export default function PersonnelScan() {
                   go("scanTrip", { trip: null, tag: null, pipeline: "" })
                 }
                 onOpenProcess={() => go("scanProcess", { trip: null, tag: null })}
+                onOpenLookup={() =>
+                  go("scanLookup", { trip: null, tag: null, pipeline: "" })
+                }
               />
             )}
 
@@ -953,6 +1048,10 @@ export default function PersonnelScan() {
 
             {state.screen === "tripDetails" && trip && <DetailsScreen doc={trip} />}
 
+            {state.screen === "casketDetails" && trip && (
+              <CasketDetailsScreen doc={trip} />
+            )}
+
             {state.screen === "result" && trip && tag && (
               <ResultScreen first={trip} second={tag} matched={matched} />
             )}
@@ -970,11 +1069,15 @@ export default function PersonnelScan() {
             {(state.screen === "depart" || state.screen === "arrive") && trip && (
               <MoveScreen
                 arriving={state.screen === "arrive"}
+                fromLabel={viewing ? "the chapel" : "the retrieval site"}
+                toLabel={viewing ? "the viewing venue" : "the chapel"}
                 from={trip.pickup ?? "Retrieval site"}
-                to={DESTINATION_CHAPEL}
+                to={tripTo}
                 rows={[
                   ["Deceased", trip.deceased ?? "—"],
-                  ["Toe tag", tag?.code ?? findTagCode(trip.caseId) ?? "—"],
+                  viewing
+                    ? ["Casket tag", state.casketTag || "—"]
+                    : ["Toe tag", tag?.code ?? findTagCode(trip.caseId) ?? "—"],
                   ["Vehicle", trip.vehicle ?? "—"],
                   ["Driver", trip.driver ?? "—"],
                   ["Departed", state.departedAt || "—"],
