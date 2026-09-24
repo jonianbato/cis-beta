@@ -274,8 +274,11 @@ export default function PersonnelScan() {
 
   // -------------------------------------------------------------- scanning
 
-  const handleCode = (raw: string) =>
+  const handleCode = (raw: string, fromCamera = false) =>
     setState((s) => {
+      // Frames already in flight when a code was accepted must not replace it
+      // before the camera stops.
+      if (fromCamera && s.scanned) return s;
       const code = String(raw ?? "")
         .trim()
         .toUpperCase();
@@ -389,12 +392,16 @@ export default function PersonnelScan() {
       }
     });
 
-  const camera = useCodeScanner({
+  // The camera only runs while the viewfinder is up. Once a code is accepted
+  // the record takes its place, and "Scan another QR" brings it back.
+  const { camera, retry: retryCamera } = useCodeScanner({
     videoRef,
-    active: SCAN_SCREENS.includes(state.screen),
-    paused: !!state.scanned,
-    onCode: handleCode,
+    active: SCAN_SCREENS.includes(state.screen) && !state.scanned,
+    onCode: (raw) => handleCode(raw, true),
   });
+
+  const rescan = () =>
+    setState((s) => ({ ...s, scanned: "", scanError: "", manual: "" }));
 
   // ----------------------------------------------------------- step cursor
 
@@ -928,6 +935,8 @@ export default function PersonnelScan() {
                 hint={scanHint}
                 videoRef={videoRef}
                 camera={camera}
+                onRetryCamera={retryCamera}
+                onRescan={rescan}
                 scannedCode={state.scanned}
                 scannedLabel={lookupDoc(state.scanned)?.docType ?? "QR"}
                 error={state.scanError}
@@ -938,7 +947,7 @@ export default function PersonnelScan() {
                   setState((s) => ({ ...s, manual: value }))
                 }
                 onSubmitManual={() => handleCode(state.manual)}
-                onUseSample={handleCode}
+                onUseSample={(code) => handleCode(code)}
               />
             )}
 

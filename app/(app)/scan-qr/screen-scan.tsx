@@ -2,8 +2,12 @@
 
 import type { RefObject } from "react";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import { Camera } from "lucide-react";
-import { cameraMessage, type CameraState } from "@/lib/use-code-scanner";
+import { Camera, RotateCcw, ScanQrCode } from "lucide-react";
+import {
+  cameraMessage,
+  canRetryCamera,
+  type CameraState,
+} from "@/lib/use-code-scanner";
 import { C, MONO } from "./theme";
 import { ErrorNote, Panel, TickBadge } from "./chrome";
 
@@ -42,11 +46,16 @@ function Corner({
  * The shared scan screen. Every one of the seven scanning steps renders this —
  * only the hint, the samples and the validation behind `onCode` differ, so the
  * operator sees the same viewfinder wherever they are in the flow.
+ *
+ * Once a code is accepted the viewfinder gives way to the record it found;
+ * "Scan another QR" is the only way back to the camera.
  */
 export function ScanScreen({
   hint,
   videoRef,
   camera,
+  onRetryCamera,
+  onRescan,
   scannedCode,
   scannedLabel,
   error,
@@ -60,6 +69,9 @@ export function ScanScreen({
   hint: string;
   videoRef: RefObject<HTMLVideoElement | null>;
   camera: CameraState;
+  onRetryCamera: () => void;
+  /** Drops the accepted code and brings the viewfinder back. */
+  onRescan: () => void;
   /** Empty until a code passes this step's checks. */
   scannedCode: string;
   scannedLabel: string;
@@ -71,6 +83,55 @@ export function ScanScreen({
   onSubmitManual: () => void;
   onUseSample: (code: string) => void;
 }) {
+  if (scannedCode) {
+    return (
+      <>
+        <Box
+          borderRadius="14px"
+          bg={C.green}
+          color={C.surface}
+          textAlign="center"
+          p="12px">
+          <Text fontSize="12px" fontWeight={700} opacity={0.9}>
+            {scannedLabel}
+          </Text>
+          <Text fontSize="18px" fontWeight={800} fontFamily={MONO} mt="2px">
+            {scannedCode}
+          </Text>
+        </Box>
+        <Flex
+          align="center"
+          justify="center"
+          gap="7px"
+          fontSize="12px"
+          fontWeight={700}
+          color={C.greenDeep}>
+          <TickBadge size={16} />
+          QR scanned successfully
+        </Flex>
+        <chakra.button
+          type="button"
+          onClick={onRescan}
+          h="44px"
+          borderRadius="10px"
+          border="1.5px solid"
+          borderColor={C.mint}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          gap="8px"
+          fontSize="13px"
+          fontWeight={800}
+          color={C.greenDeep}
+          cursor="pointer"
+          _hover={{ bg: C.tint }}>
+          <ScanQrCode size={17} strokeWidth={2} />
+          Scan another QR
+        </chakra.button>
+      </>
+    );
+  }
+
   return (
     <>
       <Text fontSize="12.5px" color={C.muted} textAlign="center" lineHeight="1.5">
@@ -111,6 +172,27 @@ export function ScanScreen({
             <Text fontSize="12px" fontWeight={700}>
               {cameraMessage(camera)}
             </Text>
+            {canRetryCamera(camera) && (
+              <chakra.button
+                type="button"
+                onClick={onRetryCamera}
+                display="flex"
+                alignItems="center"
+                gap="6px"
+                mt="4px"
+                px="12px"
+                py="6px"
+                borderRadius="20px"
+                border="1px solid"
+                borderColor={C.mint}
+                color={C.mint}
+                fontSize="11.5px"
+                fontWeight={800}
+                cursor="pointer">
+                <RotateCcw size={13} strokeWidth={2.2} />
+                Try again
+              </chakra.button>
+            )}
           </Flex>
         )}
 
@@ -131,34 +213,6 @@ export function ScanScreen({
           />
         </Box>
       </Box>
-
-      {scannedCode && (
-        <>
-          <Box
-            borderRadius="14px"
-            bg={C.green}
-            color={C.surface}
-            textAlign="center"
-            p="12px">
-            <Text fontSize="12px" fontWeight={700} opacity={0.9}>
-              {scannedLabel}
-            </Text>
-            <Text fontSize="18px" fontWeight={800} fontFamily={MONO} mt="2px">
-              {scannedCode}
-            </Text>
-          </Box>
-          <Flex
-            align="center"
-            justify="center"
-            gap="7px"
-            fontSize="12px"
-            fontWeight={700}
-            color={C.greenDeep}>
-            <TickBadge size={16} />
-            QR scanned successfully
-          </Flex>
-        </>
-      )}
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
