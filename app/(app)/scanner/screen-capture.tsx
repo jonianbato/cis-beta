@@ -128,7 +128,7 @@ export function PhotoScreen({
                   h="18px"
                   borderRadius="50%"
                   bg={C.green}
-                  color={C.surface}
+                  color={C.onFill}
                   fontSize="10px"
                   fontWeight={800}
                   align="center"

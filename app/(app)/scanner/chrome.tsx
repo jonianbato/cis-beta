@@ -81,7 +81,7 @@ export function FlowFooter({
         cursor={enabled ? "pointer" : "default"}
         userSelect="none"
         bg={!enabled ? C.line : primary.tone === "danger" ? C.red : C.green}
-        color={enabled ? C.surface : C.fainter}
+        color={enabled ? C.onFill : C.fainter}
         _focusVisible={{ outline: `2px solid ${C.greenDeep}`, outlineOffset: "2px" }}>
         {primary.label}
       </chakra.button>
@@ -258,7 +258,7 @@ export function TickBadge({ size = 16 }: { size?: number }) {
       align="center"
       justify="center"
       flexShrink={0}>
-      <Check size={size * 0.62} color={C.surface} strokeWidth={3} />
+      <Check size={size * 0.62} color={C.onFill} strokeWidth={3} />
     </Flex>
   );
 }
@@ -293,9 +293,9 @@ export function Outcome({
           ok ? "rgba(22,163,74,0.3)" : "rgba(220,38,38,0.28)"
         }`}>
         {ok ? (
-          <Check size={40} color={C.surface} strokeWidth={2.6} />
+          <Check size={40} color={C.onFill} strokeWidth={2.6} />
         ) : (
-          <X size={36} color={C.surface} strokeWidth={2.6} />
+          <X size={36} color={C.onFill} strokeWidth={2.6} />
         )}
       </Flex>
       <Text fontSize="21px" fontWeight={800} color={ok ? C.greenDeep : C.redText}>
@@ -338,7 +338,7 @@ export function Segmented({
             fontWeight={800}
             cursor="pointer"
             bg={on ? C.green : "transparent"}
-            color={on ? C.surface : C.muted}>
+            color={on ? C.onFill : C.muted}>
             {option}
           </chakra.button>
         );

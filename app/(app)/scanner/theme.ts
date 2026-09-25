@@ -1,48 +1,54 @@
 /**
  * Palette and shared surfaces for the Personnel Scan flow.
  *
- * These are literal colours rather than kit tokens on purpose: the design is
- * light-only and pins exact greens that the "green" theme does not resolve to.
- * Everything visual in the flow reads from here, so pointing these at semantic
- * tokens is the one change needed to make the screens follow the colour mode.
+ * Each entry is a CSS variable defined in app/globals.css. The light values
+ * pin the exact greens of the scan design, which the kit's "green" theme does
+ * not resolve to; the dark values are the kit's green dark palette, so the
+ * flow sits inside the app shell without a seam. The kit's ColorModeProvider
+ * puts `class="dark"` on <html>, and the variables swap there in CSS, so
+ * nothing here needs to know the mode.
  */
+const v = (name: string) => `var(--scan-${name})`;
+
 export const C = {
-  canvas: "#f2f6f3",
-  surface: "#ffffff",
+  canvas: v("canvas"),
+  surface: v("surface"),
+  /** Text and glyphs on a green or red fill — white in both modes. */
+  onFill: "#ffffff",
 
-  ink: "#0f2c1c",
-  inkSoft: "#3a4a41",
-  muted: "#5b6b62",
-  sage: "#6b8f7a",
-  faint: "#8a9a90",
-  fainter: "#a6b3ac",
+  ink: v("ink"),
+  inkSoft: v("ink-soft"),
+  muted: v("muted"),
+  sage: v("sage"),
+  faint: v("faint"),
+  fainter: v("fainter"),
 
-  line: "#e7ede9",
-  lineSoft: "#eef2ef",
-  lineFaint: "#f4f6f5",
-  field: "#dfe7e2",
+  line: v("line"),
+  lineSoft: v("line-soft"),
+  lineFaint: v("line-faint"),
+  field: v("field"),
 
-  tint: "#eef8f2",
-  tintLine: "#d2ead9",
-  tintBg: "#f8fbf9",
-  tintBorder: "#e0efe6",
-  mint: "#cfe8d9",
+  tint: v("tint"),
+  tintLine: v("tint-line"),
+  tintBg: v("tint-bg"),
+  tintBorder: v("tint-border"),
+  mint: v("mint"),
 
-  green: "#16a34a",
-  greenBright: "#22c55e",
-  greenDeep: "#0f7a37",
-  greenDeeper: "#0f5c2e",
+  green: v("green"),
+  greenBright: v("green-bright"),
+  greenDeep: v("green-deep"),
+  greenDeeper: v("green-deeper"),
 
-  red: "#dc2626",
-  redText: "#c62828",
-  redInk: "#993229",
-  redBg: "#fdf2f1",
-  redLine: "#f2dcd9",
+  red: v("red"),
+  redText: v("red-text"),
+  redInk: v("red-ink"),
+  redBg: v("red-bg"),
+  redLine: v("red-line"),
 
-  amberBg: "#fdf8ec",
-  amberLine: "#f2e3bc",
-  amberInk: "#6b4e0c",
-  amberIcon: "#8a6410",
+  amberBg: v("amber-bg"),
+  amberLine: v("amber-line"),
+  amberInk: v("amber-ink"),
+  amberIcon: v("amber-icon"),
 } as const;
 
 /** The hairline-bordered panel every grouped block in the flow sits on. */

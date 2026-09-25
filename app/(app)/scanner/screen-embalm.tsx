@@ -142,7 +142,7 @@ export function EmbalmScreen({
                 fontWeight={700}
                 cursor="pointer"
                 bg={on ? C.green : C.surface}
-                color={on ? C.surface : C.inkSoft}
+                color={on ? C.onFill : C.inkSoft}
                 border="1.5px solid"
                 borderColor={on ? C.green : C.field}>
                 {method}

@@ -4,6 +4,88 @@
    theme, so no body-level font or color overrides here — they would win
    over the design system by specificity. */
 
+/* The Personnel Scan palette (read through app/(app)/scanner/theme.ts). Light
+   pins the scan design's own greens; dark follows the kit's green dark theme
+   so the scanner matches the app shell. The kit's ColorModeProvider sets
+   class="dark" on <html>. */
+:root {
+  --scan-canvas: #f2f6f3;
+  --scan-surface: #ffffff;
+
+  --scan-ink: #0f2c1c;
+  --scan-ink-soft: #3a4a41;
+  --scan-muted: #5b6b62;
+  --scan-sage: #6b8f7a;
+  --scan-faint: #8a9a90;
+  --scan-fainter: #a6b3ac;
+
+  --scan-line: #e7ede9;
+  --scan-line-soft: #eef2ef;
+  --scan-line-faint: #f4f6f5;
+  --scan-field: #dfe7e2;
+
+  --scan-tint: #eef8f2;
+  --scan-tint-line: #d2ead9;
+  --scan-tint-bg: #f8fbf9;
+  --scan-tint-border: #e0efe6;
+  --scan-mint: #cfe8d9;
+
+  --scan-green: #16a34a;
+  --scan-green-bright: #22c55e;
+  --scan-green-deep: #0f7a37;
+  --scan-green-deeper: #0f5c2e;
+
+  --scan-red: #dc2626;
+  --scan-red-text: #c62828;
+  --scan-red-ink: #993229;
+  --scan-red-bg: #fdf2f1;
+  --scan-red-line: #f2dcd9;
+
+  --scan-amber-bg: #fdf8ec;
+  --scan-amber-line: #f2e3bc;
+  --scan-amber-ink: #6b4e0c;
+  --scan-amber-icon: #8a6410;
+}
+
+.dark {
+  --scan-canvas: #0d1913;
+  --scan-surface: #13221b;
+
+  --scan-ink: #e9f7f0;
+  --scan-ink-soft: #c1d9cd;
+  --scan-muted: #abc7b9;
+  --scan-sage: #7ba38f;
+  --scan-faint: #6e8c7d;
+  --scan-fainter: #587567;
+
+  --scan-line: rgba(255, 255, 255, 0.08);
+  --scan-line-soft: rgba(255, 255, 255, 0.06);
+  --scan-line-faint: rgba(255, 255, 255, 0.04);
+  --scan-field: rgba(255, 255, 255, 0.14);
+
+  --scan-tint: rgba(16, 148, 72, 0.18);
+  --scan-tint-line: rgba(47, 191, 107, 0.28);
+  --scan-tint-bg: #192a21;
+  --scan-tint-border: rgba(47, 191, 107, 0.22);
+  --scan-mint: rgba(47, 191, 107, 0.35);
+
+  --scan-green: #2fbf6b;
+  --scan-green-bright: #3dcf7a;
+  --scan-green-deep: #3ddc7a;
+  --scan-green-deeper: #7fe3a6;
+
+  --scan-red: #ff6b6b;
+  --scan-red-text: #ff8a8a;
+  --scan-red-ink: #ff8a8a;
+  --scan-red-bg: rgba(255, 76, 76, 0.16);
+  --scan-red-line: rgba(255, 107, 107, 0.28);
+
+  --scan-amber-bg: rgba(255, 177, 0, 0.16);
+  --scan-amber-line: rgba(255, 193, 69, 0.28);
+  --scan-amber-ink: #ffc145;
+  --scan-amber-icon: #ffc145;
+}
+
 /* The sweep across the Personnel Scan viewfinder. A keyframes rule cannot be
    expressed as a Chakra style prop, so it lives here rather than in the
    component that uses it (app/(app)/scanner/screen-scan.tsx). */

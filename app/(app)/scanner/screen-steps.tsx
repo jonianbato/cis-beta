@@ -36,7 +36,7 @@ export function ProcessScreen({
 
   return (
     <>
-      <Box borderRadius="14px" bg={C.green} color={C.surface} px="14px" py="12px">
+      <Box borderRadius="14px" bg={C.green} color={C.onFill} px="14px" py="12px">
         <Text fontSize="10.5px" fontWeight={800} opacity={0.85} letterSpacing="0.04em">
           {pipelineLabel}
         </Text>
@@ -110,7 +110,7 @@ export function ProcessScreen({
                   fontSize="11.5px"
                   fontWeight={800}
                   bg={done ? C.green : isNext ? C.surface : C.lineFaint}
-                  color={done ? C.surface : isNext ? C.green : C.fainter}
+                  color={done ? C.onFill : isNext ? C.green : C.fainter}
                   border="2px solid"
                   borderColor={done || isNext ? C.green : C.line}>
                   {done ? "✓" : index + 1}

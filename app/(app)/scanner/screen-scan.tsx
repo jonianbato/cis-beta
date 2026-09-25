@@ -89,7 +89,7 @@ export function ScanScreen({
         <Box
           borderRadius="14px"
           bg={C.green}
-          color={C.surface}
+          color={C.onFill}
           textAlign="center"
           p="12px">
           <Text fontSize="12px" fontWeight={700} opacity={0.9}>

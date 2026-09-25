@@ -114,7 +114,7 @@ export function HomeScreen({
               py="3px"
               border="1px solid"
               bg={card.good ? C.tint : C.lineFaint}
-              color={card.good ? C.greenDeep : "#6b7c73"}
+              color={card.good ? C.greenDeep : C.muted}
               borderColor={card.good ? C.tintLine : C.line}>
               {card.state}
             </Text>
