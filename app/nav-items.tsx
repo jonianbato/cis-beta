@@ -10,10 +10,10 @@ export const navItems: NavItem[] = [
     bottomNavOrder: 0,
   },
   {
-    label: "Scan QR",
+    label: "Scanner",
     displayName: "Scan",
     icon: ScanQrCode,
-    href: "/scan-qr",
+    href: "/scanner",
     bottomNav: true,
     bottomNavOrder: 1,
   },

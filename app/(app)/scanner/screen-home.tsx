@@ -19,9 +19,9 @@ type HomeCard = {
 /**
  * The two ways into the flow, plus what this operator has done today.
  *
- * Matching is a spot check that answers one question — are these two documents
- * the same deceased. Processing is the full run, where the scanned service
- * decides its own next step. Casket lookup is read-only: it answers who is in
+ * Processing is the full run, where the scanned service decides its own next
+ * step. Matching is a spot check that answers one question — are these two
+ * documents the same deceased. Casket lookup is read-only: it answers who is in
  * a casket and where they lie in state.
  */
 export function HomeScreen({
@@ -41,6 +41,14 @@ export function HomeScreen({
 }) {
   const cards: HomeCard[] = [
     {
+      title: "Scan QR to Process",
+      sub: "Retrieval, outside viewing or embalming · step by step",
+      state: "System shows the next step to authorize",
+      good: hasEmbalmed,
+      icon: ShieldCheck,
+      onOpen: onOpenProcess,
+    },
+    {
       title: "QR Matching",
       sub: "Scan any two QRs to confirm same deceased",
       state: matchedServices
@@ -49,14 +57,6 @@ export function HomeScreen({
       good: matchedServices > 0,
       icon: ScanQrCode,
       onOpen: onOpenMatching,
-    },
-    {
-      title: "Scan QR to Process",
-      sub: "Retrieval, outside viewing or embalming · step by step",
-      state: "System shows the next step to authorize",
-      good: hasEmbalmed,
-      icon: ShieldCheck,
-      onOpen: onOpenProcess,
     },
     {
       title: "Casket Lookup",

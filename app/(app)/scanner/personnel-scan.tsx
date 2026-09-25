@@ -681,7 +681,7 @@ export default function PersonnelScan() {
   // ---------------------------------------------------------------- titles
 
   const titles: Record<Screen, [string, string]> = {
-    home: ["Scan QR Facility", "Service Verification"],
+    home: ["Scanner", "Service Verification"],
     scanLookup: ["Scan Casket Barcode", "Casket Lookup"],
     casketDetails: [trip?.deceased ?? "Casket Details", trip?.room ?? "Casket Lookup"],
     scanTrip: ["Scan First QR", "Any service document"],

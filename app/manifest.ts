@@ -52,9 +52,9 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: "Scan QR",
+        name: "Scanner",
         short_name: "Scan",
-        url: "/scan-qr",
+        url: "/scanner",
         icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
       },
     ],

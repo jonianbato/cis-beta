@@ -6,6 +6,6 @@ import PersonnelScan from "./personnel-scan";
  * embalming step by step. All of it is client state, so the route itself is
  * only the mount point.
  */
-export default function ScanQrPage() {
+export default function ScannerPage() {
   return <PersonnelScan />;
 }

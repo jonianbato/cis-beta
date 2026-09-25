@@ -6,7 +6,7 @@
 
 /* The sweep across the Personnel Scan viewfinder. A keyframes rule cannot be
    expressed as a Chakra style prop, so it lives here rather than in the
-   component that uses it (app/(app)/scan-qr/screen-scan.tsx). */
+   component that uses it (app/(app)/scanner/screen-scan.tsx). */
 @keyframes osp-scanline {
   0% {
     top: 8%;
