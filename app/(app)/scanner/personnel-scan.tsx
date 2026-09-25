@@ -11,6 +11,7 @@ import {
   OTP_TTL_MS,
   PIPELINES,
   embalmerFor,
+  embalmRequestFor,
   findTagCode,
   findTripCode,
   lookupDoc,
@@ -44,7 +45,12 @@ import {
   ReviewScreen,
 } from "./screen-steps";
 import { CasketScreen, PhotoScreen } from "./screen-capture";
-import { EmbalmScreen, emptyEmbalmForm, type EmbalmForm } from "./screen-embalm";
+import {
+  EmbalmScreen,
+  emptyEmbalmForm,
+  hasDeviation,
+  type EmbalmForm,
+} from "./screen-embalm";
 
 type Screen =
   | "home"
@@ -115,7 +121,7 @@ const INITIAL: FlowState = {
   casketTag: "",
   casketPlaced: "Yes",
   departedAt: "",
-  em: emptyEmbalmForm(""),
+  em: emptyEmbalmForm("", embalmRequestFor("")),
   progress: {},
   embalmRecords: {},
   clearedCases: [],
@@ -306,11 +312,12 @@ export default function PersonnelScan() {
     : 0;
   const otpExpired = state.otpSentAt > 0 && remaining === 0;
 
+  const embalmRequest = embalmRequestFor(trip?.caseId ?? "");
   const embalmReady = !!(
     state.em.embalmer &&
     state.em.start &&
     state.em.end &&
-    state.em.types.length
+    (!hasDeviation(state.em, embalmRequest) || state.em.deviationNotes.trim())
   );
 
   // -------------------------------------------------------------- scanning
@@ -495,7 +502,10 @@ export default function PersonnelScan() {
         const saved = state.embalmRecords[trip.caseId];
         go("embalm", {
           // Each service loads its own record, never the last one typed.
-          em: saved ? { ...saved } : emptyEmbalmForm(embalmerFor(trip.caseId)),
+          em: saved ? { ...saved } : emptyEmbalmForm(
+                embalmerFor(trip.caseId),
+                embalmRequestFor(trip.caseId),
+              ),
           ...extra,
         });
         return;
@@ -1107,6 +1117,7 @@ export default function PersonnelScan() {
               <EmbalmScreen
                 name={trip.deceased ?? ""}
                 meta={`${trip.caseId} · DOD ${trip.dod ?? "—"}`}
+                requested={embalmRequest}
                 value={state.em}
                 onChange={(em) => setState((s) => ({ ...s, em }))}
               />

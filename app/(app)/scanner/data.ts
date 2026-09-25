@@ -34,11 +34,24 @@ type TripRecord = {
   phone: string;
 };
 
+export type HandPosition = "side" | "stomach";
+export type ClothesDisposition = "surrender_to_family" | "proper_disposal";
+
+/** What the family asked for on the embalming ticket. */
+export type EmbalmRequest = {
+  handPosition: HandPosition;
+  shaveFacialHair: boolean;
+  trimNails: boolean;
+  hairDye: boolean;
+  clothesDisposition: ClothesDisposition;
+};
+
 type EmbalmTicketRecord = {
   caseId: string;
   prepRoom: string;
   embalmer: string;
   scheduled: string;
+  requested: EmbalmRequest;
 };
 
 /** Where a casketed deceased lies in state, keyed by the casket tag. */
@@ -118,12 +131,26 @@ const EMBALM_TICKETS: Record<string, EmbalmTicketRecord> = {
     prepRoom: "Preparation Room 1",
     embalmer: "Santos, Rodel",
     scheduled: "2026-09-12 11:00 AM",
+    requested: {
+      handPosition: "stomach",
+      shaveFacialHair: true,
+      trimNails: true,
+      hairDye: false,
+      clothesDisposition: "surrender_to_family",
+    },
   },
   "ET-2026-000124": {
     caseId: "RET-2026-00124",
     prepRoom: "Preparation Room 2",
     embalmer: "Aquino, Liza",
     scheduled: "2026-09-12 04:00 PM",
+    requested: {
+      handPosition: "side",
+      shaveFacialHair: false,
+      trimNails: true,
+      hairDye: true,
+      clothesDisposition: "proper_disposal",
+    },
   },
 };
 
@@ -218,12 +245,29 @@ export function findTagCode(caseId: string): string | undefined {
   return Object.keys(TAGS).find((code) => TAGS[code].caseId === caseId);
 }
 
+function embalmTicketFor(caseId: string): EmbalmTicketRecord | undefined {
+  return Object.values(EMBALM_TICKETS).find(
+    (ticket) => ticket.caseId === caseId,
+  );
+}
+
 /** The embalmer the ticket already names, pre-filled on the summary form. */
 export function embalmerFor(caseId: string): string {
-  const ticket = Object.keys(EMBALM_TICKETS).find(
-    (code) => EMBALM_TICKETS[code].caseId === caseId,
-  );
-  return ticket ? EMBALM_TICKETS[ticket].embalmer : "";
+  return embalmTicketFor(caseId)?.embalmer ?? "";
+}
+
+/** No request on file reads as the plainest preparation. */
+const NO_REQUEST: EmbalmRequest = {
+  handPosition: "side",
+  shaveFacialHair: false,
+  trimNails: false,
+  hairDye: false,
+  clothesDisposition: "surrender_to_family",
+};
+
+/** What the ticket asked for — the "Requested" column of the summary. */
+export function embalmRequestFor(caseId: string): EmbalmRequest {
+  return embalmTicketFor(caseId)?.requested ?? NO_REQUEST;
 }
 
 /** Which of the eight scan screens is showing, for hint and sample copy. */
@@ -362,14 +406,6 @@ export const EMBALMERS = [
   "Santos, Rodel",
   "Villanueva, Jun",
   "Aquino, Liza",
-];
-export const EMBALM_METHODS = ["Arterial", "Cavity", "Hypodermic", "Surface"];
-export const BODY_CONDITIONS = [
-  "Good",
-  "Fair",
-  "Discoloration",
-  "Early decomposition",
-  "Trauma",
 ];
 
 export const DESTINATION_CHAPEL = "St. Peter Chapel · Commonwealth";

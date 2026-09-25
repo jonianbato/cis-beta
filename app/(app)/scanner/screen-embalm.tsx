@@ -1,35 +1,84 @@
 "use client";
 
 import { Box, Flex, Grid, Text, chakra } from "@chakra-ui/react";
-import { BODY_CONDITIONS, EMBALMERS, EMBALM_METHODS } from "./data";
+import { TriangleAlert } from "lucide-react";
+import { EMBALMERS, type EmbalmRequest } from "./data";
 import { C, field, fieldLabel } from "./theme";
 import { Panel, Segmented } from "./chrome";
 
-export type EmbalmForm = {
+export type EmbalmOutcome = "normal" | "with_complications";
+
+/**
+ * The post-embalming encoding, field for field with the MIS "Actual Values"
+ * section: each requested preparation gets its actual counterpart, and any
+ * deviation has to be explained before the summary can be saved.
+ */
+export type EmbalmForm = EmbalmRequest & {
   embalmer: string;
   start: string;
   end: string;
-  /** At least one method is required before the summary can be saved. */
-  types: string[];
-  fluid: string;
-  volume: string;
-  condition: string;
-  effects: string;
+  outcome: EmbalmOutcome;
+  chemicals: string;
   remarks: string;
+  /** Required whenever an actual value differs from the request. */
+  deviationNotes: string;
 };
 
-export function emptyEmbalmForm(embalmer: string): EmbalmForm {
+/** Actuals start at what was requested, so only a deviation needs a tap. */
+export function emptyEmbalmForm(
+  embalmer: string,
+  requested: EmbalmRequest,
+): EmbalmForm {
   return {
+    ...requested,
     embalmer,
     start: "",
     end: "",
-    types: ["Arterial"],
-    fluid: "",
-    volume: "",
-    condition: "Good",
-    effects: "Yes",
+    outcome: "normal",
+    chemicals: "",
     remarks: "",
+    deviationNotes: "",
   };
+}
+
+type Choice<T> = { value: T; label: string };
+
+const YES_NO: [Choice<boolean>, Choice<boolean>] = [
+  { value: true, label: "Yes" },
+  { value: false, label: "No" },
+];
+
+/** One row per requested preparation, in the MIS order. */
+const COMPARED: {
+  [K in keyof EmbalmRequest]: {
+    key: K;
+    label: string;
+    options: [Choice<EmbalmRequest[K]>, Choice<EmbalmRequest[K]>];
+  };
+}[keyof EmbalmRequest][] = [
+  {
+    key: "handPosition",
+    label: "Hand position",
+    options: [
+      { value: "side", label: "Side" },
+      { value: "stomach", label: "Stomach" },
+    ],
+  },
+  { key: "shaveFacialHair", label: "Shave", options: YES_NO },
+  { key: "trimNails", label: "Trim nails", options: YES_NO },
+  { key: "hairDye", label: "Hair dye", options: YES_NO },
+  {
+    key: "clothesDisposition",
+    label: "Clothes",
+    options: [
+      { value: "surrender_to_family", label: "Surrender" },
+      { value: "proper_disposal", label: "Disposal" },
+    ],
+  },
+];
+
+export function hasDeviation(form: EmbalmForm, requested: EmbalmRequest) {
+  return COMPARED.some(({ key }) => form[key] !== requested[key]);
 }
 
 /** Blank until both times are set and the end is genuinely after the start. */
@@ -51,16 +100,19 @@ function FieldLabel({ children }: { children: string }) {
 export function EmbalmScreen({
   name,
   meta,
+  requested,
   value,
   onChange,
 }: {
   name: string;
   meta: string;
+  requested: EmbalmRequest;
   value: EmbalmForm;
   onChange: (next: EmbalmForm) => void;
 }) {
   const patch = (changes: Partial<EmbalmForm>) =>
     onChange({ ...value, ...changes });
+  const deviates = hasDeviation(value, requested);
 
   return (
     <>
@@ -74,7 +126,7 @@ export function EmbalmScreen({
       </Panel>
 
       <Box>
-        <FieldLabel>Embalmer</FieldLabel>
+        <FieldLabel>Actual embalmer</FieldLabel>
         <chakra.select
           {...field}
           value={value.embalmer}
@@ -116,91 +168,92 @@ export function EmbalmScreen({
         </Flex>
       </Grid>
 
-      <Box>
-        <FieldLabel>Method</FieldLabel>
-        <Flex gap="8px" wrap="wrap">
-          {EMBALM_METHODS.map((method) => {
-            const on = value.types.includes(method);
-            return (
-              <chakra.button
-                key={method}
-                type="button"
-                aria-pressed={on}
-                onClick={() =>
+      <Panel overflow="hidden">
+        <Box
+          px="14px"
+          py="10px"
+          bg={C.tintBg}
+          borderBottom="1px solid"
+          borderColor={C.lineSoft}>
+          <Text fontSize="12px" fontWeight={800} color={C.ink}>
+            Requested vs actual
+          </Text>
+          <Text fontSize="11px" color={C.faint} mt="2px">
+            Record what was actually performed
+          </Text>
+        </Box>
+        {COMPARED.map(({ key, label, options }, index) => {
+          const choices = options as Choice<EmbalmRequest[typeof key]>[];
+          const labelOf = (v: unknown) =>
+            choices.find((choice) => choice.value === v)?.label ?? "—";
+          const off = value[key] !== requested[key];
+          return (
+            <Box
+              key={key}
+              px="14px"
+              py="10px"
+              bg={off ? C.amberBg : undefined}
+              borderBottom={index === COMPARED.length - 1 ? undefined : "1px solid"}
+              borderColor={C.lineFaint}>
+              <Flex justify="space-between" align="baseline" gap="8px" mb="6px">
+                <Flex align="center" gap="6px">
+                  <Text fontSize="13px" fontWeight={700} color={C.ink}>
+                    {label}
+                  </Text>
+                  {off && <TriangleAlert size={14} color={C.amberIcon} />}
+                </Flex>
+                <Text fontSize="11px" color={C.faint}>
+                  Requested: {labelOf(requested[key])}
+                </Text>
+              </Flex>
+              <Segmented
+                options={choices.map((choice) => choice.label)}
+                value={labelOf(value[key])}
+                onChange={(next) =>
                   patch({
-                    types: on
-                      ? value.types.filter((type) => type !== method)
-                      : [...value.types, method],
+                    [key]: choices.find((choice) => choice.label === next)?.value,
                   })
                 }
-                h="36px"
-                px="14px"
-                borderRadius="18px"
-                display="flex"
-                alignItems="center"
-                fontSize="12.5px"
-                fontWeight={700}
-                cursor="pointer"
-                bg={on ? C.green : C.surface}
-                color={on ? C.onFill : C.inkSoft}
-                border="1.5px solid"
-                borderColor={on ? C.green : C.field}>
-                {method}
-              </chakra.button>
-            );
-          })}
-        </Flex>
-      </Box>
-
-      <Grid templateColumns="1fr 96px" gap="10px">
-        <Box>
-          <FieldLabel>Fluid / chemical used</FieldLabel>
-          <chakra.input
-            {...field}
-            value={value.fluid}
-            placeholder="e.g. Formaldehyde 25 index"
-            onChange={(event) => patch({ fluid: event.target.value })}
-          />
-        </Box>
-        <Box>
-          <FieldLabel>Volume (L)</FieldLabel>
-          <chakra.input
-            {...field}
-            value={value.volume}
-            inputMode="decimal"
-            placeholder="8"
-            onChange={(event) =>
-              patch({ volume: event.target.value.replace(/[^\d.]/g, "") })
-            }
-          />
-        </Box>
-      </Grid>
+              />
+            </Box>
+          );
+        })}
+      </Panel>
 
       <Box>
-        <FieldLabel>Body condition</FieldLabel>
-        <chakra.select
-          {...field}
-          value={value.condition}
-          onChange={(event) => patch({ condition: event.target.value })}>
-          {BODY_CONDITIONS.map((condition) => (
-            <option key={condition} value={condition}>
-              {condition}
-            </option>
-          ))}
-        </chakra.select>
-      </Box>
-
-      <Box>
-        <FieldLabel>Personal effects removed and bagged</FieldLabel>
+        <FieldLabel>Embalming outcome</FieldLabel>
         <Segmented
-          options={["Yes", "No"]}
-          value={value.effects}
-          onChange={(next) => patch({ effects: next })}
+          options={["Normal", "With complications"]}
+          value={value.outcome === "normal" ? "Normal" : "With complications"}
+          onChange={(next) =>
+            patch({
+              outcome: next === "Normal" ? "normal" : "with_complications",
+            })
+          }
         />
       </Box>
 
       <Box>
-        <FieldLabel>Remarks</FieldLabel>
+        <FieldLabel>Chemicals used</FieldLabel>
+        <chakra.input
+          {...field}
+          value={value.chemicals}
+          placeholder="e.g. Formaldehyde 25 index, 8 L"
+          onChange={(event) => patch({ chemicals: event.target.value })}
+        />
+      </Box>
+
+      <Box>
+        {deviates ? (
+          <Flex align="center" gap="5px" mb="6px">
+            <TriangleAlert size={13} color={C.amberIcon} />
+            <Text fontSize="11.5px" fontWeight={800} color={C.amberInk}>
+              Deviation detected — notes required
+            </Text>
+          </Flex>
+        ) : (
+          <FieldLabel>Remarks (optional)</FieldLabel>
+        )}
         <chakra.textarea
           {...field}
           h="auto"
@@ -208,9 +261,21 @@ export function EmbalmScreen({
           py="10px"
           fontWeight={400}
           resize="vertical"
-          value={value.remarks}
-          placeholder="Restorative work, notes for viewing"
-          onChange={(event) => patch({ remarks: event.target.value })}
+          borderColor={deviates ? C.amberIcon : C.field}
+          bg={deviates ? C.amberBg : C.surface}
+          value={deviates ? value.deviationNotes : value.remarks}
+          placeholder={
+            deviates
+              ? "Why the actual preparation differs from the request"
+              : "Restorative work, notes for viewing"
+          }
+          onChange={(event) =>
+            patch(
+              deviates
+                ? { deviationNotes: event.target.value }
+                : { remarks: event.target.value },
+            )
+          }
         />
       </Box>
     </>
