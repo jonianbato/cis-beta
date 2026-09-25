@@ -12,6 +12,7 @@ export type StepView = {
   /** Timestamp the step closed at, or empty while it is still open. */
   at: string;
   otp?: boolean;
+  doneLabel?: string;
 };
 
 /**
@@ -138,7 +139,7 @@ export function ProcessScreen({
                   color={isNext ? C.greenDeep : C.faint}
                   fontWeight={isNext ? 700 : 400}>
                   {done
-                    ? `${step.otp === false ? "Matched" : "Family authorized"} · ${step.at}`
+                    ? `${step.doneLabel ?? (step.otp === false ? "Matched" : "Family authorized")} · ${step.at}`
                     : isNext
                       ? step.hint
                       : "Waiting"}

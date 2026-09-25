@@ -289,14 +289,17 @@ export type PipelineStep = {
   label: string;
   hint: string;
   tasks: TaskScreen[];
-  /** `false` for the matching steps, which close without a family code. */
+  /** `false` for the steps that close without a family code. */
   otp?: boolean;
+  /** What a closed step reads as in the list. Defaults by `otp`. */
+  doneLabel?: string;
 };
 
 /**
  * The scanned service decides its own next step — personnel never pick one.
  * Progress is tracked per pipeline, so embalming never inherits retrieval's
- * toe-tag step. Every step but the matching checks ends with a family OTP.
+ * toe-tag step. Every step but the matching checks and the retrieval's
+ * arrival at the chapel ends with a family OTP.
  */
 export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
   retrieval: [
@@ -316,8 +319,10 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
     {
       key: "transfer",
       label: "Transfer to chapel",
-      hint: "Depart and arrive · family OTP on handover",
+      hint: "Depart the retrieval site and confirm arrival at the chapel",
       tasks: ["depart", "arrive"],
+      otp: false,
+      doneLabel: "Arrived",
     },
   ],
   viewing: [
