@@ -86,6 +86,92 @@
   --scan-amber-icon: #ffc145;
 }
 
+/* The family service link palette (read through
+   app/(family)/service/[token]/family-ui.tsx). Light is the Toe Tag
+   Verification design's own; dark matches the app layout's green dark theme,
+   the same values the scanner uses above. */
+:root {
+  --family-page: #f3f8f5;
+  --family-surface: #ffffff;
+  --family-ink: #0f2e1f;
+  --family-text: #10291d;
+  --family-body: #4b5a52;
+  --family-sage: #4b6357;
+  --family-muted: #6b7d73;
+  --family-faint: #8a9a91;
+  --family-line: #e0e9e3;
+  --family-line-soft: #edf2ef;
+  --family-header: #e3ebe6;
+  --family-field: #cfdcd4;
+  --family-chip: #f1f6f3;
+  --family-chip-line: #dfe9e3;
+  --family-photo: #e6ede9;
+  --family-dashed: #b9d3c3;
+  --family-green: #15803d;
+  --family-green-hover: #116b33;
+  --family-green-dot: #16a34a;
+  --family-green-bright: #4ade80;
+  --family-green-disabled: #a9c9b5;
+  --family-ok-bg: #eaf6ee;
+  --family-ok-line: #c7e6d2;
+  --family-ok-ink: #14532d;
+  --family-warn-bg: #fef3e2;
+  --family-warn-ink: #8a4b08;
+  --family-idle-bg: #f1f4f2;
+  --family-ring: #d4ddd8;
+  --family-bar: #dfe8e2;
+  --family-err-bg: #fef3f2;
+  --family-err-line: #fecdca;
+  --family-err-title: #912018;
+  --family-err-body: #7a271a;
+  --family-err-text: #b42318;
+  --family-err-field: #f04438;
+  --family-review-bg: #eef2f7;
+  --family-review-ink: #344054;
+  --family-scrim: rgba(16, 41, 29, 0.45);
+}
+
+.dark {
+  --family-page: #0d1913;
+  --family-surface: #13221b;
+  --family-ink: #e9f7f0;
+  --family-text: #e9f7f0;
+  --family-body: #c1d9cd;
+  --family-sage: #7ba38f;
+  --family-muted: #abc7b9;
+  --family-faint: #6e8c7d;
+  --family-line: rgba(255, 255, 255, 0.08);
+  --family-line-soft: rgba(255, 255, 255, 0.06);
+  --family-header: rgba(255, 255, 255, 0.08);
+  --family-field: rgba(255, 255, 255, 0.14);
+  --family-chip: #192a21;
+  --family-chip-line: rgba(255, 255, 255, 0.1);
+  --family-photo: #192a21;
+  --family-dashed: rgba(47, 191, 107, 0.35);
+  --family-green: #2fbf6b;
+  --family-green-hover: #27a85d;
+  --family-green-dot: #2fbf6b;
+  --family-green-bright: #3dcf7a;
+  --family-green-disabled: rgba(47, 191, 107, 0.3);
+  --family-ok-bg: rgba(16, 148, 72, 0.18);
+  --family-ok-line: rgba(47, 191, 107, 0.28);
+  --family-ok-ink: #7fe3a6;
+  --family-warn-bg: rgba(255, 177, 0, 0.16);
+  --family-warn-ink: #ffc145;
+  --family-idle-bg: rgba(255, 255, 255, 0.06);
+  --family-ring: rgba(255, 255, 255, 0.18);
+  --family-bar: rgba(255, 255, 255, 0.1);
+  --family-err-bg: rgba(255, 76, 76, 0.16);
+  --family-err-line: rgba(255, 107, 107, 0.28);
+  --family-err-title: #ff8a8a;
+  --family-err-body: #ffb3b3;
+  --family-err-text: #ff8a8a;
+  --family-err-field: #ff6b6b;
+  --family-review-bg: rgba(120, 150, 200, 0.16);
+  --family-review-ink: #b9c8e6;
+  --family-scrim: rgba(0, 0, 0, 0.6);
+}
+
 /* The sweep across the Personnel Scan viewfinder. A keyframes rule cannot be
    expressed as a Chakra style prop, so it lives here rather than in the
    component that uses it (app/(app)/scanner/screen-scan.tsx). */
