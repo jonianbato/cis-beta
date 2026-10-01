@@ -241,6 +241,18 @@ export function findTripCode(caseId: string): string | undefined {
   );
 }
 
+/** The embalming ticket of a service — where a finished retrieval goes next. */
+export function findEmbalmCode(caseId: string): string | undefined {
+  return Object.keys(EMBALM_TICKETS).find(
+    (code) => EMBALM_TICKETS[code].caseId === caseId,
+  );
+}
+
+/** The casket tag of a service — what the family scans before the viewing. */
+export function findCasketCode(caseId: string): string | undefined {
+  return Object.keys(CASKETS).find((code) => CASKETS[code].caseId === caseId);
+}
+
 export function findTagCode(caseId: string): string | undefined {
   return Object.keys(TAGS).find((code) => TAGS[code].caseId === caseId);
 }
@@ -276,32 +288,23 @@ export type ScanKind =
   | "trip"
   | "tag"
   | "process"
-  | "attach"
-  | "checkTrip"
   | "checkTag"
   | "casket";
 
 /** Codes offered as one-tap chips under the manual entry box. */
-export function sampleCodes(kind: ScanKind, pipeline: Pipeline | ""): string[] {
+export function sampleCodes(kind: ScanKind): string[] {
   switch (kind) {
     case "casket":
     case "lookup":
       return Object.keys(CASKETS);
-    case "checkTrip":
-      return pipeline === "embalm"
-        ? Object.keys(EMBALM_TICKETS)
-        : Object.keys(TRIPS).filter(
-            (code) => TRIPS[code].tripType === "retrieval",
-          );
     case "checkTag":
-    case "attach":
       return Object.keys(TAGS);
     case "process":
       return [
         "TT-2026-000123",
         "TT-2026-000125",
-        "ET-2026-000123",
         "TAG-2026-000123",
+        "TAG-2026-000124",
       ];
     default:
       return [
@@ -317,11 +320,10 @@ export function sampleCodes(kind: ScanKind, pipeline: Pipeline | ""): string[] {
 
 /** A screen the personnel completes as one task inside a pipeline step. */
 export type TaskScreen =
-  | "checkTrip"
   | "checkTag"
-  | "scanAttach"
+  | "endorse"
+  | "receiveTag"
   | "photo"
-  | "review"
   | "depart"
   | "arrive"
   | "embalm"
@@ -343,22 +345,22 @@ export type PipelineStep = {
  * The scanned service decides its own next step — personnel never pick one.
  * Progress is tracked per pipeline, so embalming never inherits retrieval's
  * toe-tag step. Every step but the matching checks and the retrieval's
- * arrival at the chapel ends with a family OTP.
+ * arrival and endorsement at the chapel ends with a family OTP.
  */
 export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
   retrieval: [
     {
       key: "depcheck",
       label: "Departure check",
-      hint: "Before leaving the chapel · scan trip ticket and toe tag to match",
-      tasks: ["checkTrip", "checkTag"],
+      hint: "Before leaving the chapel · scan the toe tag to match the trip ticket",
+      tasks: ["checkTag"],
       otp: false,
     },
     {
       key: "tagging",
       label: "Toe tagging & retrieval",
-      hint: "Scan toe tag, photo of tag with deceased, family review · family OTP, then attach",
-      tasks: ["scanAttach", "photo", "review"],
+      hint: "Photo of tag with deceased · family authorization, then attach",
+      tasks: ["photo"],
     },
     {
       key: "transfer",
@@ -367,6 +369,22 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
       tasks: ["depart", "arrive"],
       otp: false,
       doneLabel: "Arrived",
+    },
+    {
+      key: "endorse",
+      label: "Endorse to CM/FCR or Guard",
+      hint: "Return to chapel · embalming · hand the deceased over to the CM/FCR or guard on duty",
+      tasks: ["endorse"],
+      otp: false,
+      doneLabel: "Endorsed",
+    },
+    {
+      key: "receive",
+      label: "Receiving confirmation",
+      hint: "CM/FCR or guard scans the toe tag QR and takes a photo of the deceased",
+      tasks: ["receiveTag", "photo"],
+      otp: false,
+      doneLabel: "Received",
     },
   ],
   viewing: [
@@ -384,14 +402,9 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
       tasks: ["depart", "arrive"],
     },
   ],
+  // Opened by the toe tag once the retrieval is finished: the tag scan shows
+  // the embalming request, so there is no separate ticket check.
   embalm: [
-    {
-      key: "embcheck",
-      label: "Embalming ticket & toe tag matching",
-      hint: "Before embalming · scan embalming ticket and toe tag to match",
-      tasks: ["checkTrip", "checkTag"],
-      otp: false,
-    },
     {
       key: "embalm",
       label: "Embalming & casketing",
@@ -399,6 +412,15 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
       tasks: ["embalm", "scanCasket", "casket", "photo"],
     },
   ],
+};
+
+/** Who at the chapel can receive the deceased from the retrieval crew. */
+export const RECEIVER_ROLES = ["CM/FCR", "Guard"];
+
+/** The staff on duty in each receiving role, picked rather than typed. */
+export const RECEIVERS: Record<string, string[]> = {
+  "CM/FCR": ["Cruz, Ana", "Mendoza, Carlo", "Garcia, Liza"],
+  Guard: ["Ramos, Ben", "Torres, Jun", "Bautista, Rey"],
 };
 
 export const EMBALMERS = [
@@ -412,3 +434,19 @@ export const DESTINATION_CHAPEL = "St. Peter Chapel · Commonwealth";
 
 export const DEMO_OTP = "123456";
 export const OTP_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * The service links sent to families, keyed by the unguessable token in the
+ * URL. The last name is what the family types to open the page; it is checked
+ * on the server and never sent to the browser.
+ */
+const SERVICE_LINKS: Record<string, { caseId: string; lastName: string }> = {
+  q7k2m9xr4d: { caseId: "RET-2026-00123", lastName: "Dela Cruz" },
+  h3w8n5tb6c: { caseId: "RET-2026-00124", lastName: "Magbanua" },
+};
+
+export function serviceLink(
+  token: string,
+): { caseId: string; lastName: string } | null {
+  return SERVICE_LINKS[token] ?? null;
+}

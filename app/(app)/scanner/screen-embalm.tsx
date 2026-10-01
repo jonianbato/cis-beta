@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Flex, Grid, Text, chakra } from "@chakra-ui/react";
-import { TriangleAlert } from "lucide-react";
+import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { EMBALMERS, type EmbalmRequest } from "./data";
 import { C, field, fieldLabel } from "./theme";
 import { Panel, Segmented } from "./chrome";
@@ -18,10 +18,9 @@ export type EmbalmForm = EmbalmRequest & {
   start: string;
   end: string;
   outcome: EmbalmOutcome;
-  chemicals: string;
   remarks: string;
-  /** Required whenever an actual value differs from the request. */
-  deviationNotes: string;
+  /** Per field, required wherever the actual value differs from the request. */
+  deviationNotes: Partial<Record<keyof EmbalmRequest, string>>;
 };
 
 /** Actuals start at what was requested, so only a deviation needs a tap. */
@@ -35,9 +34,8 @@ export function emptyEmbalmForm(
     start: "",
     end: "",
     outcome: "normal",
-    chemicals: "",
     remarks: "",
-    deviationNotes: "",
+    deviationNotes: {},
   };
 }
 
@@ -77,8 +75,15 @@ const COMPARED: {
   },
 ];
 
-export function hasDeviation(form: EmbalmForm, requested: EmbalmRequest) {
-  return COMPARED.some(({ key }) => form[key] !== requested[key]);
+/** Every field that differs from the request has its own remark. */
+export function deviationsExplained(
+  form: EmbalmForm,
+  requested: EmbalmRequest,
+) {
+  return COMPARED.every(
+    ({ key }) =>
+      form[key] === requested[key] || !!form.deviationNotes[key]?.trim(),
+  );
 }
 
 /** Blank until both times are set and the end is genuinely after the start. */
@@ -94,6 +99,120 @@ function durationLabel(start: string, end: string): string {
 
 function FieldLabel({ children }: { children: string }) {
   return <Text {...fieldLabel}>{children}</Text>;
+}
+
+/**
+ * What the family asked for, shown when the toe tag is scanned for embalming.
+ * Read-only: the actuals are recorded on the summary once embalming is done.
+ */
+export function EmbalmRequestScreen({
+  name,
+  meta,
+  rows,
+  requested,
+  status,
+  active,
+}: {
+  name: string;
+  meta: string;
+  rows: [string, string][];
+  requested: EmbalmRequest;
+  status: string;
+  /** The procedure is under way: the status reads as live, not as a warning. */
+  active: boolean;
+}) {
+  return (
+    <>
+      <Panel px="14px" py="12px">
+        <Text fontSize="15px" fontWeight={800} color={C.ink}>
+          {name}
+        </Text>
+        <Text fontSize="11.5px" color={C.sage} mt="2px">
+          {meta}
+        </Text>
+      </Panel>
+
+      <Flex
+        align="center"
+        gap="6px"
+        px="12px"
+        py="9px"
+        borderRadius="10px"
+        bg={active ? C.tintBg : C.amberBg}
+        border="1px solid"
+        borderColor={active ? C.tintBorder : C.amberLine}
+        role="status">
+        {active ? (
+          <Box animation="spin 1.4s linear infinite" display="flex">
+            <LoaderCircle size={14} color={C.green} />
+          </Box>
+        ) : (
+          <TriangleAlert size={14} color={C.amberIcon} />
+        )}
+        <Text
+          fontSize="12px"
+          fontWeight={800}
+          color={active ? C.greenDeeper : C.amberInk}>
+          {status}
+        </Text>
+      </Flex>
+
+      <Panel overflow="hidden">
+        {rows.map(([label, value], index) => (
+          <Flex
+            key={label}
+            justify="space-between"
+            gap="10px"
+            px="14px"
+            py="10px"
+            borderBottom={index === rows.length - 1 ? undefined : "1px solid"}
+            borderColor={C.lineFaint}>
+            <Text fontSize="12px" fontWeight={700} color={C.faint}>
+              {label}
+            </Text>
+            <Text fontSize="13px" fontWeight={800} color={C.ink} textAlign="right">
+              {value}
+            </Text>
+          </Flex>
+        ))}
+      </Panel>
+
+      <Panel overflow="hidden">
+        <Box
+          px="14px"
+          py="10px"
+          bg={C.tintBg}
+          borderBottom="1px solid"
+          borderColor={C.lineSoft}>
+          <Text fontSize="12px" fontWeight={800} color={C.ink}>
+            Embalming request
+          </Text>
+          <Text fontSize="11px" color={C.faint} mt="2px">
+            As requested by the family
+          </Text>
+        </Box>
+        {COMPARED.map(({ key, label, options }, index) => (
+          <Flex
+            key={key}
+            justify="space-between"
+            gap="10px"
+            px="14px"
+            py="10px"
+            borderBottom={index === COMPARED.length - 1 ? undefined : "1px solid"}
+            borderColor={C.lineFaint}>
+            <Text fontSize="13px" fontWeight={700} color={C.ink}>
+              {label}
+            </Text>
+            <Text fontSize="13px" fontWeight={800} color={C.greenDeep}>
+              {(options as Choice<unknown>[]).find(
+                (choice) => choice.value === requested[key],
+              )?.label ?? "—"}
+            </Text>
+          </Flex>
+        ))}
+      </Panel>
+    </>
+  );
 }
 
 /** The record the embalmer files before the family is asked to authorize. */
@@ -112,7 +231,6 @@ export function EmbalmScreen({
 }) {
   const patch = (changes: Partial<EmbalmForm>) =>
     onChange({ ...value, ...changes });
-  const deviates = hasDeviation(value, requested);
 
   return (
     <>
@@ -209,12 +327,50 @@ export function EmbalmScreen({
               <Segmented
                 options={choices.map((choice) => choice.label)}
                 value={labelOf(value[key])}
-                onChange={(next) =>
+                onChange={(next) => {
+                  const actual = choices.find((choice) => choice.label === next)?.value;
+                  // Back in line with the request, the field's remark no
+                  // longer explains anything, so it is not kept on the record.
+                  const { [key]: _dropped, ...otherNotes } = value.deviationNotes;
+                  void _dropped;
                   patch({
-                    [key]: choices.find((choice) => choice.label === next)?.value,
-                  })
-                }
+                    [key]: actual,
+                    deviationNotes:
+                      actual === requested[key] ? otherNotes : value.deviationNotes,
+                  });
+                }}
               />
+              {off && (
+                <Box mt="8px">
+                  <chakra.label
+                    htmlFor={`deviation-${key}`}
+                    display="flex"
+                    alignItems="center"
+                    gap="5px"
+                    mb="6px"
+                    fontSize="11.5px"
+                    fontWeight={800}
+                    color={C.amberInk}>
+                    <TriangleAlert size={13} color={C.amberIcon} />
+                    Remarks required · {label} differs from request
+                  </chakra.label>
+                  <chakra.input
+                    id={`deviation-${key}`}
+                    {...field}
+                    borderColor={C.amberIcon}
+                    value={value.deviationNotes[key] ?? ""}
+                    placeholder={`Why ${label.toLowerCase()} differs from the request`}
+                    onChange={(event) =>
+                      patch({
+                        deviationNotes: {
+                          ...value.deviationNotes,
+                          [key]: event.target.value,
+                        },
+                      })
+                    }
+                  />
+                </Box>
+              )}
             </Box>
           );
         })}
@@ -234,26 +390,7 @@ export function EmbalmScreen({
       </Box>
 
       <Box>
-        <FieldLabel>Chemicals used</FieldLabel>
-        <chakra.input
-          {...field}
-          value={value.chemicals}
-          placeholder="e.g. Formaldehyde 25 index, 8 L"
-          onChange={(event) => patch({ chemicals: event.target.value })}
-        />
-      </Box>
-
-      <Box>
-        {deviates ? (
-          <Flex align="center" gap="5px" mb="6px">
-            <TriangleAlert size={13} color={C.amberIcon} />
-            <Text fontSize="11.5px" fontWeight={800} color={C.amberInk}>
-              Deviation detected — notes required
-            </Text>
-          </Flex>
-        ) : (
-          <FieldLabel>Remarks (optional)</FieldLabel>
-        )}
+        <FieldLabel>Remarks (optional)</FieldLabel>
         <chakra.textarea
           {...field}
           h="auto"
@@ -261,21 +398,9 @@ export function EmbalmScreen({
           py="10px"
           fontWeight={400}
           resize="vertical"
-          borderColor={deviates ? C.amberIcon : C.field}
-          bg={deviates ? C.amberBg : C.surface}
-          value={deviates ? value.deviationNotes : value.remarks}
-          placeholder={
-            deviates
-              ? "Why the actual preparation differs from the request"
-              : "Restorative work, notes for viewing"
-          }
-          onChange={(event) =>
-            patch(
-              deviates
-                ? { deviationNotes: event.target.value }
-                : { remarks: event.target.value },
-            )
-          }
+          value={value.remarks}
+          placeholder="Restorative work, notes for viewing"
+          onChange={(event) => patch({ remarks: event.target.value })}
         />
       </Box>
     </>

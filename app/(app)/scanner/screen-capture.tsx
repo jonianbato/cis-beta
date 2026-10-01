@@ -1,11 +1,11 @@
 "use client";
 
-import type { ChangeEvent, ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import Image from "next/image";
 import { Box, Flex, Grid, Text, chakra } from "@chakra-ui/react";
-import { Camera, ImageUp, QrCode, User } from "lucide-react";
+import { Camera, Expand, ImageUp, QrCode, User, X } from "lucide-react";
 import { C } from "./theme";
-import { ConfirmedStrip, Panel, Segmented } from "./chrome";
+import { ConfirmedStrip, Panel } from "./chrome";
 
 const PHOTO_STEPS = [
   "Frame the deceased's face inside the corners.",
@@ -209,17 +209,147 @@ export function PhotoScreen({
   );
 }
 
-/** Confirming the deceased is dressed and in the casket the contract names. */
+/**
+ * A photo already on the record: a thumbnail that opens it full screen, so the
+ * team can check the deceased as received while the work is under way.
+ */
+export function PhotoViewer({
+  label,
+  caption,
+  photoUrl,
+}: {
+  label: string;
+  caption: string;
+  photoUrl: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <>
+      <Panel p="10px" display="flex" alignItems="center" gap="12px" bg={C.surface}>
+        <chakra.button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={`Open ${label.toLowerCase()}`}
+          w="64px"
+          h="76px"
+          flexShrink={0}
+          borderRadius="10px"
+          bg={C.canvas}
+          backgroundImage={`url("${photoUrl}")`}
+          backgroundSize="cover"
+          backgroundPosition="center"
+          cursor="zoom-in"
+        />
+        <Box flex="1" minW="0">
+          <Text fontSize="12.5px" fontWeight={800} color={C.ink}>
+            {label}
+          </Text>
+          <Text fontSize="11px" color={C.muted} mt="2px">
+            {caption}
+          </Text>
+        </Box>
+        <chakra.button
+          type="button"
+          onClick={() => setOpen(true)}
+          h="36px"
+          px="12px"
+          borderRadius="10px"
+          border="1.5px solid"
+          borderColor={C.mint}
+          display="flex"
+          alignItems="center"
+          gap="6px"
+          fontSize="12px"
+          fontWeight={800}
+          color={C.greenDeep}
+          cursor="pointer"
+          flexShrink={0}
+          _hover={{ bg: C.tint }}>
+          <Expand size={14} />
+          View photo
+        </chakra.button>
+      </Panel>
+
+      {open && (
+        <Flex
+          position="fixed"
+          inset="0"
+          // Above the shell's floating buttons and bottom nav.
+          zIndex={2000}
+          bg="rgba(5, 15, 10, 0.92)"
+          direction="column"
+          role="dialog"
+          aria-modal="true"
+          aria-label={label}
+          onClick={() => setOpen(false)}>
+          <Flex
+            align="center"
+            justify="space-between"
+            gap="10px"
+            px="16px"
+            pt="calc(12px + env(safe-area-inset-top, 0px))"
+            pb="12px">
+            <Box minW="0">
+              <Text fontSize="14px" fontWeight={800} color="#ffffff">
+                {label}
+              </Text>
+              <Text fontSize="11.5px" color="rgba(255,255,255,0.7)">
+                {caption}
+              </Text>
+            </Box>
+            <chakra.button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close photo"
+              w="40px"
+              h="40px"
+              borderRadius="50%"
+              bg="rgba(255,255,255,0.14)"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              cursor="pointer"
+              flexShrink={0}>
+              <X size={20} color="#ffffff" />
+            </chakra.button>
+          </Flex>
+          <Flex flex="1" minH="0" align="center" justify="center" p="16px" pt="0">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a local object URL, nothing for next/image to optimise */}
+            <img
+              src={photoUrl}
+              alt={label}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+                borderRadius: "12px",
+              }}
+            />
+          </Flex>
+        </Flex>
+      )}
+    </>
+  );
+}
+
+/** Confirming the deceased is in the casket the contract names. */
 export function CasketScreen({
   model,
   casketTag,
-  placed,
-  onPlacedChange,
 }: {
   model: string;
   casketTag: string;
-  placed: string;
-  onPlacedChange: (next: string) => void;
 }) {
   return (
     <>
@@ -233,17 +363,6 @@ export function CasketScreen({
       </Panel>
 
       <ConfirmedStrip label="Casket barcode scanned" value={casketTag} />
-
-      <Box>
-        <Text fontSize="11.5px" fontWeight={700} color={C.faint} mb="6px">
-          Deceased dressed and placed in casket
-        </Text>
-        <Segmented
-          options={["Yes", "No"]}
-          value={placed}
-          onChange={onPlacedChange}
-        />
-      </Box>
     </>
   );
 }

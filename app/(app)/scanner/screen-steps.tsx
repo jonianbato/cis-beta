@@ -1,9 +1,9 @@
 "use client";
 
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import { ShieldCheck } from "lucide-react";
-import { C, MONO } from "./theme";
-import { ConfirmedStrip, InlineRow, Panel, TickBadge } from "./chrome";
+import { BellRing, LoaderCircle, ShieldCheck } from "lucide-react";
+import { C, MONO, field, fieldLabel } from "./theme";
+import { InlineRow, Panel, Segmented, TickBadge } from "./chrome";
 
 export type StepView = {
   key: string;
@@ -221,58 +221,72 @@ export function MoveScreen({
   );
 }
 
-/** What the family is shown before they authorize the step. */
-export function ReviewScreen({
-  photoUrl,
+/**
+ * Back at the chapel, the crew hands the deceased over for embalming. The
+ * receiver is named here; confirming the receipt is the next step, theirs.
+ */
+export function EndorseScreen({
+  roles,
+  role,
+  onRoleChange,
+  people,
+  name,
+  onNameChange,
   rows,
-  tagLabel,
-  tagLinked,
 }: {
-  photoUrl: string;
+  roles: string[];
+  role: string;
+  onRoleChange: (next: string) => void;
+  /** The staff on duty in the chosen role. */
+  people: string[];
+  name: string;
+  onNameChange: (next: string) => void;
   rows: [string, string][];
-  tagLabel: string;
-  tagLinked: boolean;
 }) {
   return (
     <>
       <Text fontSize="12.5px" color={C.muted} lineHeight="1.5">
-        Family reviews the deceased details, toe tag and photo with you before
-        authorizing.
+        Return to chapel · embalming. Endorse the deceased to the CM/FCR or the
+        guard on duty. They confirm receiving in the next step by scanning the
+        toe tag QR and taking a photo.
       </Text>
 
-      <Panel p="14px" display="flex" gap="14px">
-        <Box
-          w="84px"
-          h="104px"
-          borderRadius="10px"
-          overflow="hidden"
-          bg={C.canvas}
-          flexShrink={0}
-          backgroundImage={photoUrl ? `url("${photoUrl}")` : undefined}
-          backgroundSize="cover"
-          backgroundPosition="center"
-        />
-        <Box flex="1" minW="0" display="flex" flexDirection="column" gap="7px">
-          {rows.map(([label, value]) => (
-            <Box key={label}>
-              <Text fontSize="10px" fontWeight={700} color={C.fainter}>
-                {label}
-              </Text>
-              <Text fontSize="12.5px" fontWeight={700} color={C.ink}>
-                {value}
-              </Text>
-            </Box>
-          ))}
-        </Box>
+      <Panel overflow="hidden">
+        {rows.map(([label, value], index) => (
+          <InlineRow
+            key={label}
+            label={label}
+            value={value}
+            last={index === rows.length - 1}
+          />
+        ))}
       </Panel>
 
-      {tagLinked ? (
-        <ConfirmedStrip label={tagLabel} />
-      ) : (
-        <Text fontSize="12px" fontWeight={700} color={C.muted}>
-          {tagLabel}
-        </Text>
-      )}
+      <Box>
+        <Text {...fieldLabel}>Endorse to</Text>
+        <Segmented options={roles} value={role} onChange={onRoleChange} />
+      </Box>
+
+      <Box>
+        <chakra.label htmlFor="endorse-receiver" {...fieldLabel} display="block">
+          Name of {role}
+        </chakra.label>
+        <chakra.select
+          id="endorse-receiver"
+          {...field}
+          value={name}
+          color={name ? C.ink : C.fainter}
+          onChange={(event) => onNameChange(event.target.value)}>
+          <option value="" disabled>
+            Select {role}
+          </option>
+          {people.map((person) => (
+            <option key={person} value={person}>
+              {person}
+            </option>
+          ))}
+        </chakra.select>
+      </Box>
     </>
   );
 }
@@ -298,7 +312,8 @@ export function AuthorizeScreen({
         </Text>
         <Text fontSize="13px" color={C.muted} lineHeight="1.5" maxW="290px">
           Tasks for this step are done. Send a one-time code to the registered
-          family contact — they read it back to you to approve.
+          family contact — they read it back to you to approve — or ask them to
+          approve it in their St. Peter app.
         </Text>
       </Flex>
 
@@ -313,6 +328,55 @@ export function AuthorizeScreen({
           {contactMasked}
         </Text>
       </Panel>
+    </>
+  );
+}
+
+/**
+ * The app route to the same approval: the family's phone gets a notification
+ * and the operator waits here until the family confirms it.
+ */
+export function AppWaitScreen({
+  stepLabel,
+  contactName,
+}: {
+  stepLabel: string;
+  contactName: string;
+}) {
+  return (
+    <>
+      <Flex direction="column" align="center" gap="10px" pt="16px" pb="4px" textAlign="center">
+        <Flex w="64px" h="64px" borderRadius="50%" bg={C.tint} align="center" justify="center">
+          <Box animation="spin 1.1s linear infinite" display="flex">
+            <LoaderCircle size={30} color={C.green} strokeWidth={2} />
+          </Box>
+        </Flex>
+        <Text fontSize="17px" fontWeight={800} color={C.ink}>
+          Waiting for authorization
+        </Text>
+        <Text fontSize="13px" color={C.muted} lineHeight="1.5" maxW="290px">
+          A notification was sent to {contactName}&apos;s St. Peter app. Ask them
+          to open it and confirm <b>{stepLabel}</b>.
+        </Text>
+      </Flex>
+
+      <Panel px="14px" py="12px" display="flex" alignItems="center" gap="12px">
+        <Flex w="36px" h="36px" borderRadius="10px" bg={C.tint} align="center" justify="center" flexShrink={0}>
+          <BellRing size={18} color={C.green} />
+        </Flex>
+        <Box minW="0">
+          <Text fontSize="12.5px" fontWeight={800} color={C.ink}>
+            Process waiting for confirmation
+          </Text>
+          <Text fontSize="11.5px" color={C.muted}>
+            Sent to {contactName} · this screen moves on once they approve
+          </Text>
+        </Box>
+      </Panel>
+
+      <Text fontSize="10.5px" color={C.fainter} textAlign="center">
+        Demo: the family approves after 3–5 seconds
+      </Text>
     </>
   );
 }

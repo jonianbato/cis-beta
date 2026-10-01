@@ -271,30 +271,32 @@ export function ScanScreen({
           </chakra.button>
         </Flex>
 
-        <Flex gap="6px" wrap="wrap" align="center">
-          <Text fontSize="10.5px" color={C.fainter}>
-            Samples:
-          </Text>
-          {samples.map((code) => (
-            <chakra.button
-              key={code}
-              type="button"
-              onClick={() => onUseSample(code)}
-              fontSize="10.5px"
-              fontWeight={700}
-              color={C.greenDeep}
-              bg={C.tint}
-              border="1px solid"
-              borderColor={C.tintLine}
-              borderRadius="20px"
-              px="9px"
-              py="3px"
-              cursor="pointer"
-              fontFamily={MONO}>
-              {code}
-            </chakra.button>
-          ))}
-        </Flex>
+        {samples.length > 0 && (
+          <Flex gap="6px" wrap="wrap" align="center">
+            <Text fontSize="10.5px" color={C.fainter}>
+              Samples:
+            </Text>
+            {samples.map((code) => (
+              <chakra.button
+                key={code}
+                type="button"
+                onClick={() => onUseSample(code)}
+                fontSize="10.5px"
+                fontWeight={700}
+                color={C.greenDeep}
+                bg={C.tint}
+                border="1px solid"
+                borderColor={C.tintLine}
+                borderRadius="20px"
+                px="9px"
+                py="3px"
+                cursor="pointer"
+                fontFamily={MONO}>
+                {code}
+              </chakra.button>
+            ))}
+          </Flex>
+        )}
       </Panel>
     </>
   );

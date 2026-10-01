@@ -10,8 +10,11 @@ import {
   DESTINATION_CHAPEL,
   OTP_TTL_MS,
   PIPELINES,
+  RECEIVERS,
+  RECEIVER_ROLES,
   embalmerFor,
   embalmRequestFor,
+  findEmbalmCode,
   findTagCode,
   findTripCode,
   lookupDoc,
@@ -38,17 +41,19 @@ import {
   ResultScreen,
 } from "./screen-match";
 import {
+  AppWaitScreen,
   AuthorizeScreen,
+  EndorseScreen,
   MoveScreen,
   OtpScreen,
   ProcessScreen,
-  ReviewScreen,
 } from "./screen-steps";
-import { CasketScreen, PhotoScreen } from "./screen-capture";
+import { CasketScreen, PhotoScreen, PhotoViewer } from "./screen-capture";
 import {
+  EmbalmRequestScreen,
   EmbalmScreen,
   emptyEmbalmForm,
-  hasDeviation,
+  deviationsExplained,
   type EmbalmForm,
 } from "./screen-embalm";
 
@@ -62,18 +67,19 @@ type Screen =
   | "result"
   | "scanProcess"
   | "processPick"
-  | "checkTrip"
   | "checkTag"
-  | "scanAttach"
+  | "endorse"
+  | "receiveTag"
   | "scanCasket"
   | "casket"
   | "photo"
-  | "review"
   | "authorize"
+  | "appWait"
   | "otp"
   | "final"
   | "depart"
   | "arrive"
+  | "embalmRequest"
   | "embalm";
 
 type FlowState = {
@@ -89,17 +95,31 @@ type FlowState = {
   otp: string;
   otpSentAt: number;
   otpFail: "" | "expired" | "invalid";
+  /** How the family approved the step: a code read back, or in their app. */
+  authVia: "otp" | "app";
   pipeline: Pipeline | "";
   /** Which step of the pipeline is open, and how far into its task list. */
   stepKey: string;
   taskIdx: number;
   casketTag: string;
-  casketPlaced: string;
   departedAt: string;
+  /** Who at the chapel the deceased is endorsed to for embalming. */
+  receiverRole: string;
+  receiverName: string;
   em: EmbalmForm;
   /** `pipeline:caseId` -> step key -> the time that step was authorized. */
   progress: Record<string, Record<string, string>>;
   embalmRecords: Record<string, EmbalmForm>;
+  /**
+   * caseId -> when the procedure was started and finished, as "HH:MM" for the
+   * summary's time fields and as a stamp for the status line.
+   */
+  embalmTimes: Record<
+    string,
+    { start: string; startedAt: string; end?: string; endedAt?: string }
+  >;
+  /** caseId -> the photo of the deceased required before embalming starts. */
+  preEmbalmPhotos: Record<string, string>;
   clearedCases: string[];
   log: LogEntry[];
 };
@@ -115,15 +135,19 @@ const INITIAL: FlowState = {
   otp: "",
   otpSentAt: 0,
   otpFail: "",
+  authVia: "otp",
   pipeline: "",
   stepKey: "",
   taskIdx: 0,
   casketTag: "",
-  casketPlaced: "Yes",
   departedAt: "",
+  receiverRole: RECEIVER_ROLES[0],
+  receiverName: "",
   em: emptyEmbalmForm("", embalmRequestFor("")),
   progress: {},
   embalmRecords: {},
+  embalmTimes: {},
+  preEmbalmPhotos: {},
   clearedCases: [],
   log: [],
 };
@@ -133,27 +157,27 @@ const SCAN_SCREENS: Screen[] = [
   "scanTrip",
   "scanTag",
   "scanProcess",
-  "scanAttach",
-  "checkTrip",
   "checkTag",
+  "receiveTag",
   "scanCasket",
 ];
 
 /** Screens that belong to a service run rather than the standalone check. */
 const PIPE_SCREENS: Screen[] = [
   "processPick",
-  "checkTrip",
   "checkTag",
-  "scanAttach",
+  "endorse",
+  "receiveTag",
   "scanCasket",
   "casket",
   "photo",
-  "review",
   "authorize",
+  "appWait",
   "otp",
   "final",
   "depart",
   "arrive",
+  "embalmRequest",
   "embalm",
 ];
 
@@ -163,13 +187,14 @@ const PROCESS_FLOW: Screen[] = [
   "scanProcess",
   "processPick",
   "photo",
-  "review",
   "authorize",
   "otp",
   "final",
 ];
 
 const LOG_LIMIT = 6;
+/** The demo family takes this long to approve in their app. */
+const APP_APPROVE_MS = [3000, 5000] as const;
 const TOAST_MS = 3200;
 
 function stamp(): string {
@@ -177,6 +202,14 @@ function stamp(): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/** The time now as a time field holds it, "HH:MM" in 24 hours. */
+function clock(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes(),
+  ).padStart(2, "0")}`;
 }
 
 /** Wrapped so the clock is read outside the component's render path. */
@@ -306,6 +339,9 @@ export default function PersonnelScan() {
     : DESTINATION_CHAPEL;
   const tripToShort = viewing ? "viewing venue" : "chapel";
   const stepLabel = curStep?.label ?? "";
+  // The photo that confirms receiving at the chapel is the receiver's, not the
+  // driver's toe-tagging photo.
+  const receiving = curStep?.key === "receive";
 
   const remaining = state.otpSentAt
     ? Math.max(0, OTP_TTL_MS - (now - state.otpSentAt))
@@ -313,12 +349,46 @@ export default function PersonnelScan() {
   const otpExpired = state.otpSentAt > 0 && remaining === 0;
 
   const embalmRequest = embalmRequestFor(trip?.caseId ?? "");
+  const procedure = trip ? state.embalmTimes[trip.caseId] : undefined;
+  const preEmbalmPhoto = trip ? (state.preEmbalmPhotos[trip.caseId] ?? "") : "";
   const embalmReady = !!(
     state.em.embalmer &&
     state.em.start &&
     state.em.end &&
-    (!hasDeviation(state.em, embalmRequest) || state.em.deviationNotes.trim())
+    deviationsExplained(state.em, embalmRequest)
   );
+
+  // Authorize via app: the family's phone is notified, and for the demo they
+  // approve after a few seconds. Leaving the screen withdraws the request.
+  const waitingFor = state.screen === "appWait" ? stepLabel : "";
+  const waitingName = trip?.deceased ?? "";
+  useEffect(() => {
+    if (!waitingFor) return;
+    const [min, max] = APP_APPROVE_MS;
+    const id = setTimeout(
+      () =>
+        setState((s) =>
+          s.screen !== "appWait"
+            ? s
+            : {
+                ...s,
+                screen: "final",
+                otpFail: "",
+                authVia: "app",
+                log: [
+                  {
+                    text: `Family authorized in app · ${waitingFor} · ${waitingName}`,
+                    tone: "good" as const,
+                    at: stamp(),
+                  },
+                  ...s.log,
+                ].slice(0, LOG_LIMIT),
+              },
+        ),
+      min + Math.random() * (max - min),
+    );
+    return () => clearTimeout(id);
+  }, [waitingFor, waitingName]);
 
   // -------------------------------------------------------------- scanning
 
@@ -360,29 +430,22 @@ export default function PersonnelScan() {
             return reject("That is the same QR. Scan a different document.");
           return accept({ tag: doc });
 
-        case "checkTrip": {
-          const wantEmbalm = s.pipeline === "embalm";
-          if (!doc || doc.kind !== (wantEmbalm ? "embalm" : "trip"))
-            return reject(
-              wantEmbalm
-                ? "Scan the embalming ticket QR (ET-…)."
-                : "Scan the trip ticket QR (TT-…).",
-            );
-          if (!s.trip || doc.caseId !== s.trip.caseId)
-            return reject(
-              `${doc.code} is for ${doc.deceased}, not ${s.trip?.deceased}.`,
-            );
-          return accept();
-        }
-
-        case "checkTag": {
+        // The ticket scanned to open the service is the first half of the
+        // match, so the check asks only for the toe tag. Receiving at the
+        // chapel is the same match, made by the receiver.
+        case "checkTag":
+        case "receiveTag": {
           if (!doc || doc.kind !== "tag")
             return reject("Scan the toe tag QR (TAG-…).");
           if (!s.trip || doc.caseId !== s.trip.caseId) {
             // A mismatch here is the whole point of the check, so it goes on
             // the log even though the operator never left the screen.
-            const where =
-              s.pipeline === "embalm" ? "before embalming" : "at departure";
+            const receiving = s.screen === "receiveTag";
+            const where = receiving
+              ? "at chapel receiving"
+              : s.pipeline === "embalm"
+                ? "before embalming"
+                : "at departure";
             const entry: LogEntry = {
               text: `Mismatch ${where} · ${doc.code} ≠ ${s.trip?.caseId}`,
               tone: "bad",
@@ -391,9 +454,11 @@ export default function PersonnelScan() {
             return {
               ...reject(
                 `MISMATCH — ${doc.code} is for ${doc.deceased}. ${
-                  s.pipeline === "embalm"
-                    ? "Do not proceed with embalming"
-                    : "Do not leave the chapel"
+                  receiving
+                    ? "Do not receive the deceased"
+                    : s.pipeline === "embalm"
+                      ? "Do not proceed with embalming"
+                      : "Do not leave the chapel"
                 }; notify your supervisor.`,
               ),
               log: [entry, ...s.log].slice(0, LOG_LIMIT),
@@ -426,15 +491,6 @@ export default function PersonnelScan() {
           }
           return accept({ casketTag: doc.code });
 
-        case "scanAttach":
-          if (!doc || doc.kind !== "tag")
-            return reject("Scan the toe tag QR (TAG-…).");
-          if (!s.trip || doc.caseId !== s.trip.caseId)
-            return reject(
-              `${doc.code} belongs to ${doc.deceased}, not ${s.trip?.deceased}. Do not attach.`,
-            );
-          return accept({ tag: doc });
-
         case "scanProcess": {
           // Either QR works at the site — the ticket or the toe tag.
           const tripCode = doc ? findTripCode(doc.caseId) : undefined;
@@ -442,13 +498,33 @@ export default function PersonnelScan() {
             return reject(
               `${code || "That code"} is not a trip ticket or toe tag on file.`,
             );
-          const isEmbalming = doc.kind === "embalm";
+          // Embalming is opened by the toe tag, never by the ticket.
+          if (doc.kind === "embalm")
+            return reject(
+              "Embalming is opened from the toe tag. Scan the toe tag QR (TAG-…).",
+            );
+          // The same toe tag scanned once its retrieval is finished moves the
+          // service on to embalming, and the request is shown from it.
+          const retrievalDone = PIPELINES.retrieval.every(
+            (step) => s.progress[`retrieval:${doc.caseId}`]?.[step.key],
+          );
+          if (doc.kind === "tag" && retrievalDone) {
+            const ticket = lookupDoc(findEmbalmCode(doc.caseId) ?? "");
+            if (!ticket)
+              return reject(
+                `Retrieval of ${doc.deceased} is complete, but no embalming request is on file.`,
+              );
+            return accept({
+              trip: ticket,
+              tag: doc,
+              casketTag: "",
+              pipeline: "embalm",
+            });
+          }
           // A viewing ticket is its own trip; any other document of the
           // service resolves to its retrieval ticket.
           const isViewing = doc.kind === "trip" && doc.tripType === "viewing";
-          const service = lookupDoc(
-            isEmbalming || isViewing ? doc.code : tripCode,
-          );
+          const service = lookupDoc(isViewing ? doc.code : tripCode);
           if (!service)
             return reject(
               `${code} is not a trip ticket or toe tag on file.`,
@@ -457,7 +533,7 @@ export default function PersonnelScan() {
             trip: service,
             tag: null,
             casketTag: "",
-            pipeline: isEmbalming ? "embalm" : isViewing ? "viewing" : "retrieval",
+            pipeline: isViewing ? "viewing" : "retrieval",
           });
         }
 
@@ -500,19 +576,26 @@ export default function PersonnelScan() {
       case "embalm": {
         if (!trip) return;
         const saved = state.embalmRecords[trip.caseId];
+        const times = { ...state.embalmTimes[trip.caseId], ...extra.embalmTimes?.[trip.caseId] };
         go("embalm", {
-          // Each service loads its own record, never the last one typed.
-          em: saved ? { ...saved } : emptyEmbalmForm(
-                embalmerFor(trip.caseId),
-                embalmRequestFor(trip.caseId),
-              ),
+          // Each service loads its own record, never the last one typed. A new
+          // summary takes its times from the Start and Finish taps.
+          em: saved
+            ? { ...saved }
+            : {
+                ...emptyEmbalmForm(
+                  embalmerFor(trip.caseId),
+                  embalmRequestFor(trip.caseId),
+                ),
+                start: times.start ?? "",
+                // Started and finished in the same minute leaves the end for
+                // the embalmer, rather than a zero-length procedure.
+                end: times.end && times.end > (times.start ?? "") ? times.end : "",
+              },
           ...extra,
         });
         return;
       }
-      case "scanAttach":
-        go("scanAttach", { tag: null, ...extra });
-        return;
       case "photo":
         go("photo", { photoUrl: "", ...extra });
         return;
@@ -520,7 +603,14 @@ export default function PersonnelScan() {
         go("scanCasket", { casketTag: "", ...extra });
         return;
       case "casket":
-        go("casket", { casketPlaced: "Yes", ...extra });
+        go("casket", extra);
+        return;
+      case "endorse":
+        go("endorse", {
+          receiverRole: RECEIVER_ROLES[0],
+          receiverName: "",
+          ...extra,
+        });
         return;
       default:
         go(screen, extra);
@@ -583,8 +673,14 @@ export default function PersonnelScan() {
     if (!trip) return;
     const sentAt = nowMs();
     setNow(sentAt);
-    go("otp", { otp: "", otpSentAt: sentAt, otpFail: "" });
+    go("otp", { otp: "", otpSentAt: sentAt, otpFail: "", authVia: "otp" });
     flash(`OTP sent to ${trip.contact}`);
+  };
+
+  const requestAppApproval = () => {
+    if (!trip) return;
+    go("appWait", { otpFail: "", authVia: "app" });
+    flash(`Notification sent to ${trip.contact}'s app`);
   };
 
   const verifyOtp = () => {
@@ -610,7 +706,16 @@ export default function PersonnelScan() {
     if (!file) return;
     const url = URL.createObjectURL(file);
     photoUrls.current.push(url);
-    setState((s) => ({ ...s, photoUrl: url }));
+    setState((s) =>
+      // The photo taken before embalming is kept with its service, apart
+      // from the step photos that each task starts fresh.
+      s.screen === "embalmRequest" && s.trip
+        ? {
+            ...s,
+            preEmbalmPhotos: { ...s.preEmbalmPhotos, [s.trip.caseId]: url },
+          }
+        : { ...s, photoUrl: url },
+    );
   };
 
   const saveEmbalming = () => {
@@ -648,17 +753,13 @@ export default function PersonnelScan() {
       ? "lookup"
       : state.screen === "scanCasket"
       ? "casket"
-      : state.screen === "checkTrip"
-        ? "checkTrip"
-        : state.screen === "checkTag"
-          ? "checkTag"
-          : state.screen === "scanAttach"
-            ? "attach"
-            : state.screen === "scanTag"
-              ? "tag"
-              : state.screen === "scanProcess"
-                ? "process"
-                : "trip";
+      : state.screen === "checkTag" || state.screen === "receiveTag"
+        ? "checkTag"
+        : state.screen === "scanTag"
+          ? "tag"
+          : state.screen === "scanProcess"
+            ? "process"
+            : "trip";
 
   const who = trip?.deceased ?? "this service";
   const scanHint =
@@ -668,25 +769,21 @@ export default function PersonnelScan() {
       ? viewing
         ? `Before leaving the chapel, scan the casket barcode. It must be ${who}'s casket to match trip ticket ${trip?.code ?? ""}.`
         : `Scan the barcode on the casket tag for ${who} · ${trip?.casket ?? ""}`
-      : scanKind === "checkTrip"
-        ? state.pipeline === "embalm"
-          ? `Before embalming, scan the embalming ticket for ${who}.`
-          : `Before leaving the chapel, scan the trip ticket for ${who}.`
+      : state.screen === "receiveTag"
+        ? `${state.receiverRole}${
+            state.receiverName.trim() ? ` ${state.receiverName.trim()}` : ""
+          }: confirm receiving ${who} by scanning the toe tag QR.`
         : scanKind === "checkTag"
-          ? `Scan the toe tag to match with ${trip?.code ?? "the trip ticket"}.`
-          : scanKind === "attach"
-            ? `${
-                state.pipeline === "embalm"
-                  ? `Scan the toe tag on ${trip?.deceased ?? "the deceased"}`
-                  : `Scan the toe tag prepared for ${trip?.deceased ?? "the deceased"}`
-              } to link it to ${trip?.caseId ?? "this service"}.`
-            : scanKind === "process"
-              ? "Scan any QR of the service. The system shows the next step to authorize."
-              : scanKind === "tag"
-                ? `Scan a second QR to compare with ${
-                    trip ? `${trip.docType} ${trip.code}` : "the first"
-                  }.`
-                : "Scan any service QR — trip ticket, embalming ticket, toe tag, wristband or casket tag.";
+        ? `${
+            state.pipeline === "embalm" ? "Before embalming" : "Before leaving the chapel"
+          }, scan the toe tag for ${who} to match with ${trip?.code ?? "the ticket"}.`
+        : scanKind === "process"
+          ? "Scan any QR of the service. The system shows the next step to authorize."
+          : scanKind === "tag"
+            ? `Scan a second QR to compare with ${
+                trip ? `${trip.docType} ${trip.code}` : "the first"
+              }.`
+            : "Scan any service QR — trip ticket, embalming ticket, toe tag, wristband or casket tag.";
 
   // ---------------------------------------------------------------- titles
 
@@ -703,26 +800,21 @@ export default function PersonnelScan() {
     result: [matched ? "Match Confirmation" : "Mismatch", "QR Matching"],
     scanProcess: ["Scan QR to Process", "Retrieval, viewing or embalming"],
     processPick: ["Service Process", pipelineLabel],
-    scanAttach: [
-      state.pipeline === "embalm" ? "Toe Tag Verification" : "Scan Toe Tag",
-      trip?.deceased ?? "",
-    ],
     casket: ["Casketing", trip?.deceased ?? ""],
     scanCasket: [
       "Scan Casket Barcode",
       viewing ? "Casket matching · before the trip" : (trip?.deceased ?? ""),
-    ],
-    checkTrip: [
-      state.pipeline === "embalm" ? "Scan Embalming Ticket" : "Scan Trip Ticket",
-      state.pipeline === "embalm"
-        ? "Matching · preparation room"
-        : "Departure check · at the chapel",
     ],
     checkTag: [
       "Scan Toe Tag",
       state.pipeline === "embalm"
         ? "Matching · preparation room"
         : "Departure check · at the chapel",
+    ],
+    endorse: ["Endorse Deceased", "Return to chapel · embalming"],
+    receiveTag: [
+      "Scan Toe Tag",
+      `Receiving confirmation · ${state.receiverRole}`,
     ],
     depart: [
       viewing ? "Depart to Viewing Venue" : "Depart to Chapel",
@@ -732,10 +824,11 @@ export default function PersonnelScan() {
       viewing ? "Arrive at Viewing Venue" : "Arrive at Chapel",
       pipelineLabel,
     ],
+    embalmRequest: ["Embalming Request", trip?.deceased ?? ""],
     embalm: ["Embalming Summary", "Preparation room"],
     photo: ["Add Deceased Photo", stepLabel],
-    review: ["Review Details", stepLabel],
     authorize: ["Family Authorization", stepLabel],
+    appWait: ["Authorize via App", stepLabel],
     otp: ["Enter OTP", stepLabel],
     final: [state.otpFail ? "Authorization Failed" : "Authorized", stepLabel],
   };
@@ -826,9 +919,69 @@ export default function PersonnelScan() {
         primary: {
           label: "Continue",
           enabled: !!state.scanned,
-          onClick: () => go("processPick"),
+          // Until embalming has ended, its toe tag scan opens on the request.
+          onClick: () =>
+            go(
+              state.pipeline === "embalm" && nextStep
+                ? "embalmRequest"
+                : "processPick",
+            ),
         },
       };
+      break;
+    case "embalmRequest":
+      footer =
+        nextStep && trip
+          ? {
+              primary: !procedure
+                ? {
+                    label: preEmbalmPhoto
+                      ? "Start embalming"
+                      : "Add photo to start embalming",
+                    enabled: !!preEmbalmPhoto,
+                    onClick: () => {
+                      addLog(`Embalming started · ${trip.deceased}`, "good");
+                      setState((s) => ({
+                        ...s,
+                        embalmTimes: {
+                          ...s.embalmTimes,
+                          [trip.caseId]: { start: clock(), startedAt: stamp() },
+                        },
+                      }));
+                    },
+                  }
+                : !procedure.end
+                  ? {
+                      label: "Finish embalming",
+                      onClick: () => {
+                        addLog(`Embalming finished · ${trip.deceased}`, "good");
+                        const embalmTimes = {
+                          ...state.embalmTimes,
+                          [trip.caseId]: {
+                            ...procedure,
+                            end: clock(),
+                            endedAt: stamp(),
+                          },
+                        };
+                        // On to the summary, with the finish time already in.
+                        openTask(nextStep.tasks[0], {
+                          stepKey: nextStep.key,
+                          taskIdx: 0,
+                          embalmTimes,
+                        });
+                      },
+                    }
+                  : {
+                      label: "Continue to embalming summary",
+                      onClick: () => startStep(nextStep),
+                    },
+              secondary: {
+                label: "Back to menu",
+                onClick: () =>
+                  go("home", { trip: null, tag: null, pipeline: "" }),
+              },
+            }
+          : null;
       break;
     case "processPick":
       footer = nextStep
@@ -858,15 +1011,6 @@ export default function PersonnelScan() {
             },
           };
       break;
-    case "checkTrip":
-      footer = {
-        primary: {
-          label: "Next: Scan Toe Tag",
-          enabled: !!state.scanned,
-          onClick: completeTask,
-        },
-      };
-      break;
     case "checkTag":
       footer = {
         primary: {
@@ -880,24 +1024,6 @@ export default function PersonnelScan() {
                   ? "cleared for embalming"
                   : "cleared to leave chapel"
               }`,
-              "good",
-            );
-            completeTask();
-          },
-        },
-      };
-      break;
-    case "scanAttach":
-      footer = {
-        primary: {
-          label: "Confirm toe tag",
-          enabled: !!state.scanned,
-          onClick: () => {
-            if (!trip || !tag) return;
-            addLog(
-              `Toe tag ${tag.code} ${
-                state.pipeline === "embalm" ? "verified" : "scanned"
-              } · ${trip.deceased}`,
               "good",
             );
             completeTask();
@@ -964,21 +1090,64 @@ export default function PersonnelScan() {
         },
       };
       break;
-    case "photo":
+    case "endorse":
       footer = {
         primary: {
-          label: "Next",
-          enabled: !!state.photoUrl,
+          label: `Endorse to ${state.receiverRole}`,
+          enabled: !!state.receiverName.trim(),
+          onClick: () => {
+            if (!trip) return;
+            addLog(
+              `Endorsed to ${state.receiverRole} ${state.receiverName.trim()} · ${trip.deceased}`,
+              "good",
+            );
+            completeTask();
+          },
+        },
+      };
+      break;
+    case "receiveTag":
+      footer = {
+        primary: {
+          label: "Confirm toe tag",
+          enabled: !!state.scanned,
           onClick: completeTask,
         },
       };
       break;
-    case "review":
-      footer = { primary: { label: "Confirm details", onClick: completeTask } };
+    case "photo":
+      footer = {
+        primary: {
+          label: receiving ? "Confirm received" : "Next",
+          enabled: !!state.photoUrl,
+          onClick: () => {
+            if (receiving && trip)
+              addLog(
+                `Received at chapel · ${tag?.code ?? trip.caseId} · by ${state.receiverRole} ${state.receiverName.trim()}`,
+                "good",
+              );
+            completeTask();
+          },
+        },
+      };
       break;
     case "authorize":
       footer = {
         primary: { label: "Send OTP to family", onClick: sendOtp },
+        secondary: { label: "Authorize via App", onClick: requestAppApproval },
+      };
+      break;
+    case "appWait":
+      footer = {
+        primary: {
+          label: "Waiting for family…",
+          enabled: false,
+          onClick: () => {},
+        },
+        secondary: {
+          label: "Cancel · use OTP instead",
+          onClick: () => go("authorize", { otp: "", otpFail: "" }),
+        },
       };
       break;
     case "otp":
@@ -1065,7 +1234,7 @@ export default function PersonnelScan() {
                 error={state.scanError}
                 manual={state.manual}
                 placeholder="e.g. WB-2026-000123"
-                samples={sampleCodes(scanKind, state.pipeline)}
+                samples={sampleCodes(scanKind)}
                 onManualChange={(value) =>
                   setState((s) => ({ ...s, manual: value }))
                 }
@@ -1113,6 +1282,76 @@ export default function PersonnelScan() {
               />
             )}
 
+            {state.screen === "endorse" && trip && (
+              <EndorseScreen
+                roles={RECEIVER_ROLES}
+                role={state.receiverRole}
+                // A name picked for one role is not on the other's list.
+                onRoleChange={(receiverRole) =>
+                  setState((s) => ({ ...s, receiverRole, receiverName: "" }))
+                }
+                people={RECEIVERS[state.receiverRole] ?? []}
+                name={state.receiverName}
+                onNameChange={(receiverName) =>
+                  setState((s) => ({ ...s, receiverName }))
+                }
+                rows={[
+                  ["Deceased", trip.deceased ?? "—"],
+                  ["Service ID", trip.caseId],
+                  ["Toe tag", tag?.code ?? findTagCode(trip.caseId) ?? "—"],
+                  ["Endorsed by", trip.driver ?? "—"],
+                ]}
+              />
+            )}
+
+            {state.screen === "embalmRequest" && trip && (
+              <EmbalmRequestScreen
+                name={trip.deceased ?? ""}
+                meta={`${trip.caseId} · DOD ${trip.dod ?? "—"}`}
+                active={!!procedure && !procedure.end}
+                status={
+                  !procedure
+                    ? "For embalming · not yet started"
+                    : !procedure.end
+                      ? `Embalming on process · started ${procedure.startedAt}`
+                      : `Embalming finished ${procedure.endedAt ?? ""} · ${
+                          state.embalmRecords[trip.caseId]
+                            ? "casketing pending"
+                            : "summary pending"
+                        }`
+                }
+                rows={[
+                  ["Toe tag", tag?.code ?? "—"],
+                  ["Embalming ticket", trip.code],
+                  ["Preparation room", trip.prepRoom ?? "—"],
+                  ["Scheduled", trip.scheduled ?? "—"],
+                  ["Embalmer", trip.embalmer ?? "—"],
+                ]}
+                requested={embalmRequest}
+              />
+            )}
+
+            {/* The deceased is photographed as received, before any work. */}
+            {state.screen === "embalmRequest" &&
+              trip &&
+              (procedure ? (
+                preEmbalmPhoto && (
+                  <PhotoViewer
+                    label="Photo before embalming"
+                    caption={`${trip.deceased ?? ""} · taken before the start at ${procedure.startedAt}`}
+                    photoUrl={preEmbalmPhoto}
+                  />
+                )
+              ) : (
+                <PhotoScreen
+                  showSample={false}
+                  photoUrl={preEmbalmPhoto}
+                  onPick={pickPhoto}
+                  hint="Required before embalming: take a photo of the deceased as received in the preparation room."
+                  rule={`Deceased's face and the toe tag${tag ? ` (${tag.code})` : ""} must be visible in the photo.`}
+                />
+              ))}
+
             {state.screen === "embalm" && trip && (
               <EmbalmScreen
                 name={trip.deceased ?? ""}
@@ -1127,46 +1366,27 @@ export default function PersonnelScan() {
               <CasketScreen
                 model={trip.casket ?? "Per contract"}
                 casketTag={state.casketTag}
-                placed={state.casketPlaced}
-                onPlacedChange={(placed) =>
-                  setState((s) => ({ ...s, casketPlaced: placed }))
-                }
               />
             )}
 
             {state.screen === "photo" && (
               <PhotoScreen
-                showSample={state.pipeline !== "embalm"}
+                showSample={state.pipeline !== "embalm" && !receiving}
                 photoUrl={state.photoUrl}
                 onPick={pickPhoto}
                 hint={
-                  state.pipeline === "embalm"
-                    ? "Embalmer: take a photo of the deceased after embalming and casketing, before family authorization."
-                    : "Driver: hold the toe tag in front of the camera with the deceased in the background. The tag is attached after family authorization."
+                  receiving
+                    ? `${state.receiverRole}: take a photo of the deceased as received at the chapel, before endorsing for embalming.`
+                    : state.pipeline === "embalm"
+                      ? "Embalmer: take a photo of the deceased after embalming and casketing, before family authorization."
+                      : "Driver: hold the toe tag in front of the camera with the deceased in the background. The tag is attached after family authorization."
                 }
                 rule={
-                  state.pipeline === "embalm"
-                    ? `Face, casket and the toe tag QR${tag ? ` (${tag.code})` : ""} must be visible in the photo.`
-                    : `Toe tag QR${tag ? ` (${tag.code})` : ""} in focus in front, deceased's face visible behind it.`
-                }
-              />
-            )}
-
-            {state.screen === "review" && trip && (
-              <ReviewScreen
-                photoUrl={state.photoUrl}
-                rows={[
-                  ["Name", trip.deceased ?? "—"],
-                  ["Date of birth · age", trip.dob ?? "—"],
-                  ["Date of death", trip.dod ?? "—"],
-                  ["Service ID", trip.caseId],
-                  ["Toe tag", tag?.code ?? "—"],
-                ]}
-                tagLinked={!!tag}
-                tagLabel={
-                  tag
-                    ? `Toe tag ${tag.code} linked`
-                    : "Toe tag is attached after family authorization"
+                  receiving
+                    ? `Deceased's face and the attached toe tag${tag ? ` (${tag.code})` : ""} must be visible in the photo.`
+                    : state.pipeline === "embalm"
+                      ? `Face, casket and the toe tag QR${tag ? ` (${tag.code})` : ""} must be visible in the photo.`
+                      : `Toe tag QR${tag ? ` (${tag.code})` : ""} in focus in front, deceased's face visible behind it.`
                 }
               />
             )}
@@ -1176,6 +1396,13 @@ export default function PersonnelScan() {
                 stepLabel={stepLabel || "Family authorization"}
                 contactName={trip.contact ?? "—"}
                 contactMasked={trip.phone ?? "—"}
+              />
+            )}
+
+            {state.screen === "appWait" && trip && (
+              <AppWaitScreen
+                stepLabel={stepLabel || "this step"}
+                contactName={trip.contact ?? "the family"}
               />
             )}
 
@@ -1212,7 +1439,9 @@ export default function PersonnelScan() {
                   : state.otpFail
                     ? "Invalid code. Ask the family to check the message, or request a new OTP."
                     : trip
-                      ? `${stepLabel || "This step"} approved by ${trip.contact}. ${
+                      ? `${stepLabel || "This step"} approved ${
+                          state.authVia === "app" ? "in the app " : ""
+                        }by ${trip.contact}. ${
                           curStep?.key === "tagging"
                             ? "Attach the toe tag to the deceased and proceed with the retrieval."
                             : "You may proceed."

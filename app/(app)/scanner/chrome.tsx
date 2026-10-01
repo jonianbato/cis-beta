@@ -47,15 +47,18 @@ export type FooterAction = {
 export function FlowFooter({
   primary,
   secondary,
+  bottom = NAV_CLEARANCE,
 }: {
   primary: FooterAction;
   secondary?: { label: string; onClick: () => void };
+  /** Pages outside the app shell have no bottom nav to clear. */
+  bottom?: string | typeof NAV_CLEARANCE;
 }) {
   const enabled = primary.enabled !== false;
   return (
     <Box
       position="sticky"
-      bottom={NAV_CLEARANCE}
+      bottom={bottom}
       // Bleed past the kit page's 16px mobile gutter so the bar spans the screen.
       mx={{ base: "-16px", lg: 0 }}
       bg={C.surface}
