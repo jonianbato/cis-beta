@@ -56,9 +56,15 @@ const CHECK_MS = 800;
  */
 export function Verification({
   token,
+  returning,
   onOpened,
 }: {
   token: string;
+  /**
+   * The toe tag was already scanned and reviewed in this browser: the name
+   * opens the service home directly, so the scan steps are not shown.
+   */
+  returning: boolean;
   /** The service home, released once the toe tag is confirmed. */
   onOpened: (lastName: string, home: ServiceHome) => void;
 }) {
@@ -215,19 +221,21 @@ export function Verification({
             </Text>
           )}
         </Flex>
-        <Flex maxW="560px" mx="auto" px="20px" pb="14px" gap="6px">
-          {PROGRESS.map((label, index) => (
-            <Flex key={label} flex="1" direction="column" gap="6px">
-              <Box h="4px" borderRadius="2px" bg={index <= progressAt ? P.greenDot : P.bar} />
-              <Text
-                fontSize="11px"
-                fontWeight={index === progressAt ? 600 : 400}
-                color={index <= progressAt ? P.ink : P.faint}>
-                {label}
-              </Text>
-            </Flex>
-          ))}
-        </Flex>
+        {!(returning && step === "auth") && (
+          <Flex maxW="560px" mx="auto" px="20px" pb="14px" gap="6px">
+            {PROGRESS.map((label, index) => (
+              <Flex key={label} flex="1" direction="column" gap="6px">
+                <Box h="4px" borderRadius="2px" bg={index <= progressAt ? P.greenDot : P.bar} />
+                <Text
+                  fontSize="11px"
+                  fontWeight={index === progressAt ? 600 : 400}
+                  color={index <= progressAt ? P.ink : P.faint}>
+                  {label}
+                </Text>
+              </Flex>
+            ))}
+          </Flex>
+        )}
       </Box>
 
       <Flex

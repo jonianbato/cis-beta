@@ -26,9 +26,10 @@ import { getServiceHome, type ServiceHome } from "./actions";
 import { Verification } from "./verification";
 
 /** The steps after the toe tag, as the bell lists them while they wait. */
-const PENDING_STEPS: { id: "embalm" | "casket"; title: string }[] = [
+const PENDING_STEPS: { id: "embalm" | "casket" | "delivered"; title: string }[] = [
   { id: "embalm", title: "Confirm embalming outcome & casket design" },
   { id: "casket", title: "Confirm casket before viewing" },
+  { id: "delivered", title: "Confirm arrival at viewing venue" },
 ];
 
 export const FAMILY_DOCS = [
@@ -71,9 +72,12 @@ export function useFamily(): FamilySession {
  */
 export function FamilyProvider({
   token,
+  returning,
   children,
 }: {
   token: string;
+  /** This browser already confirmed the toe tag, so only the name is asked. */
+  returning: boolean;
   children: ReactNode;
 }) {
   const [lastName, setLastName] = useState("");
@@ -98,6 +102,7 @@ export function FamilyProvider({
     return (
       <Verification
         token={token}
+        returning={returning}
         onOpened={(name, opened) => {
           setLastName(name);
           setHome(opened);
@@ -145,7 +150,10 @@ function FamilyShell({
   };
 
   // What still waits on the family: the next step, and any document unsent.
-  const nextStep = PENDING_STEPS.find((step) => !home.done[step.id]);
+  const nextStep = PENDING_STEPS.find(
+    (step) =>
+      !home.done[step.id] && (step.id !== "delivered" || !!home.viewingTrip),
+  );
   const notifications: NotificationDataProps[] = [
     ...(nextStep
       ? [
@@ -176,12 +184,15 @@ function FamilyShell({
       navItems={navItems}
       user={user}
       notifications={notifications}
-      // The shell routes to /login after signing out; leaving the page for the
-      // link itself keeps the family on their own service instead.
+      // Signing out reloads the link itself, so the family lands on its first
+      // screen — the last-name check — with nothing of the session kept. The
+      // kit pushes /login (staff sign-in) once this handler settles, and in a
+      // production build that push can beat the reload; the handler never
+      // settles, so the push never runs and the reload replaces the page.
       onSignOut={() => {
         session.signOut();
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- the kit's sign-out contract: a router push would lose to its own /login redirect
-        window.location.assign(base);
+        window.location.replace(base);
+        return new Promise<void>(() => {});
       }}>
       {children}
     </AppLayout>

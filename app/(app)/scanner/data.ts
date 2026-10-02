@@ -80,7 +80,7 @@ export type ServiceDoc = Partial<TripRecord> &
   };
 
 const TRIPS: Record<string, TripRecord> = {
-  "TT-2026-000123": {
+  "REV-2026-000123": {
     caseId: "RET-2026-00123",
     tripType: "retrieval",
     deceased: "Juan Dela Cruz",
@@ -94,7 +94,7 @@ const TRIPS: Record<string, TripRecord> = {
     contact: "Maria Dela Cruz",
     phone: "0917 *** 4521",
   },
-  "TT-2026-000124": {
+  "REV-2026-000124": {
     caseId: "RET-2026-00124",
     tripType: "retrieval",
     deceased: "Rosario Magbanua",
@@ -108,7 +108,7 @@ const TRIPS: Record<string, TripRecord> = {
     contact: "Arnel Magbanua",
     phone: "0928 *** 1187",
   },
-  "TT-2026-000125": {
+  "VIE-2026-000125": {
     caseId: "RET-2026-00123",
     tripType: "viewing",
     deceased: "Juan Dela Cruz",
@@ -191,7 +191,8 @@ const EXTRA_DOCS: Record<string, { caseId: string }> = {
 };
 
 const DOC_TYPES: Record<string, string> = {
-  TT: "Trip Ticket",
+  REV: "Retrieval Trip Ticket",
+  VIE: "Viewing Trip Ticket",
   ET: "Embalming Ticket",
   TAG: "Toe Tag",
   WB: "Wristband",
@@ -218,7 +219,7 @@ export function lookupDoc(raw: string): ServiceDoc | null {
       (trip) => trip.caseId === record.caseId && trip.tripType === "retrieval",
     ) ?? {};
   const kind: DocKind =
-    prefix === "TT"
+    prefix === "REV" || prefix === "VIE"
       ? "trip"
       : prefix === "ET"
         ? "embalm"
@@ -238,6 +239,14 @@ export function findTripCode(caseId: string): string | undefined {
   return Object.keys(TRIPS).find(
     (code) =>
       TRIPS[code].caseId === caseId && TRIPS[code].tripType === "retrieval",
+  );
+}
+
+/** The outside viewing ticket of a service, when its wake is held elsewhere. */
+export function findViewingTripCode(caseId: string): string | undefined {
+  return Object.keys(TRIPS).find(
+    (code) =>
+      TRIPS[code].caseId === caseId && TRIPS[code].tripType === "viewing",
   );
 }
 
@@ -282,7 +291,7 @@ export function embalmRequestFor(caseId: string): EmbalmRequest {
   return embalmTicketFor(caseId)?.requested ?? NO_REQUEST;
 }
 
-/** Which of the eight scan screens is showing, for hint and sample copy. */
+/** Which kind of scan screen is showing, for hint and sample copy. */
 export type ScanKind =
   | "lookup"
   | "trip"
@@ -301,14 +310,14 @@ export function sampleCodes(kind: ScanKind): string[] {
       return Object.keys(TAGS);
     case "process":
       return [
-        "TT-2026-000123",
-        "TT-2026-000125",
+        "REV-2026-000123",
+        "VIE-2026-000125",
         "TAG-2026-000123",
         "TAG-2026-000124",
       ];
     default:
       return [
-        "TT-2026-000123",
+        "REV-2026-000123",
         "ET-2026-000123",
         "TAG-2026-000123",
         "WB-2026-000123",
@@ -343,8 +352,8 @@ export type PipelineStep = {
 /**
  * The scanned service decides its own next step — personnel never pick one.
  * Progress is tracked per pipeline, so embalming never inherits retrieval's
- * toe-tag step. Only the toe tagging, the viewing handover and the embalmed
- * deceased's endorsement to the family end with a family OTP.
+ * toe-tag step. Only the toe tagging, the arrival at an outside viewing venue
+ * and the embalmed deceased's endorsement to the family end with a family OTP.
  */
 export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
   retrieval: [
@@ -397,8 +406,19 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
     {
       key: "viewtrip",
       label: "Trip to viewing venue",
-      hint: "Depart the chapel and arrive at the venue · family OTP on handover",
+      // The family's part of the trip is confirming the deceased reached the
+      // wake, so their OTP closes the arrival rather than opening the trip.
+      hint: "Depart the chapel and arrive at the venue · family confirms the deceased has been brought to the viewing venue",
       tasks: ["depart", "arrive"],
+      doneLabel: "Family confirmed",
+    },
+    {
+      key: "returnArrive",
+      label: "Arrival at chapel",
+      hint: "Confirm arrival at the chapel from the viewing venue · ends the trip",
+      tasks: ["arrive"],
+      otp: false,
+      doneLabel: "Arrived · trip ended",
     },
   ],
   // Opened by the toe tag once the retrieval is finished: the tag scan shows

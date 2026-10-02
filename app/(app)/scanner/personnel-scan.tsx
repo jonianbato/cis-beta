@@ -334,10 +334,13 @@ export default function PersonnelScan() {
   const viewing = state.pipeline === "viewing";
   // Where the current trip ends: the chapel for a retrieval, the wake venue
   // for a viewing.
-  const tripTo = viewing
-    ? (trip?.destination ?? "Viewing venue")
-    : DESTINATION_CHAPEL;
-  const tripToShort = viewing ? "viewing venue" : "chapel";
+  // Back from the viewing venue, the last leg ends at the chapel again.
+  const returningToChapel = curStep?.key === "returnArrive";
+  const tripTo =
+    viewing && !returningToChapel
+      ? (trip?.destination ?? "Viewing venue")
+      : DESTINATION_CHAPEL;
+  const tripToShort = viewing && !returningToChapel ? "viewing venue" : "chapel";
   const stepLabel = curStep?.label ?? "";
   // The photo that confirms receiving at the chapel is the receiver's, not the
   // driver's toe-tagging photo.
@@ -876,7 +879,7 @@ export default function PersonnelScan() {
       pipelineLabel,
     ],
     arrive: [
-      viewing ? "Arrive at Viewing Venue" : "Arrive at Chapel",
+      viewing && !returningToChapel ? "Arrive at Viewing Venue" : "Arrive at Chapel",
       pipelineLabel,
     ],
     embalmRequest: ["Embalming Request", trip?.deceased ?? ""],
@@ -1144,7 +1147,13 @@ export default function PersonnelScan() {
           label: `Confirm arrival at ${tripToShort}`,
           onClick: () => {
             if (!trip) return;
-            addLog(`Arrived at ${tripToShort} · ${trip.deceased}`, "good");
+            addLog(
+              returningToChapel
+                ? `Arrived at chapel from viewing venue · ${trip.deceased} · trip ${trip.code} ended`
+                : `Arrived at ${tripToShort} · ${trip.deceased}`,
+              "good",
+            );
+            if (returningToChapel) flash(`Trip ${trip.code} ended.`);
             completeTask();
           },
         },
@@ -1340,9 +1349,19 @@ export default function PersonnelScan() {
             {(state.screen === "depart" || state.screen === "arrive") && trip && (
               <MoveScreen
                 arriving={state.screen === "arrive"}
-                fromLabel={viewing ? "the chapel" : "the retrieval site"}
-                toLabel={viewing ? "the viewing venue" : "the chapel"}
-                from={trip.pickup ?? "Retrieval site"}
+                fromLabel={
+                  returningToChapel
+                    ? "the viewing venue"
+                    : viewing
+                      ? "the chapel"
+                      : "the retrieval site"
+                }
+                toLabel={viewing && !returningToChapel ? "the viewing venue" : "the chapel"}
+                from={
+                  returningToChapel
+                    ? (trip.destination ?? "Viewing venue")
+                    : (trip.pickup ?? "Retrieval site")
+                }
                 to={tripTo}
                 rows={[
                   ["Deceased", trip.deceased ?? "—"],
@@ -1546,15 +1565,19 @@ export default function PersonnelScan() {
                   : state.otpFail
                     ? "Invalid code. Ask the family to check the message, or request a new OTP."
                     : trip
-                      ? `${stepLabel || "This step"} approved ${
-                          state.authVia === "app" ? "in the app " : ""
-                        }by ${trip.contact}. ${
-                          curStep?.key === "tagging"
-                            ? "Attach the toe tag to the deceased and proceed with the retrieval."
-                            : curStep?.key === "endorseFamily"
-                              ? "Proceed with encasketing."
-                              : "You may proceed."
-                        }`
+                      ? curStep?.key === "viewtrip"
+                        ? `${trip.contact} confirmed ${
+                            state.authVia === "app" ? "in the app " : ""
+                          }that ${trip.deceased} has been brought to the viewing venue. Return to the chapel to end the trip.`
+                        : `${stepLabel || "This step"} approved ${
+                            state.authVia === "app" ? "in the app " : ""
+                          }by ${trip.contact}. ${
+                            curStep?.key === "tagging"
+                              ? "Attach the toe tag to the deceased and proceed with the retrieval."
+                              : curStep?.key === "endorseFamily"
+                                ? "Proceed with encasketing."
+                                : "You may proceed."
+                          }`
                       : ""}
               </Outcome>
             )}

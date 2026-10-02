@@ -8,6 +8,7 @@ import {
   findEmbalmCode,
   findTagCode,
   findTripCode,
+  findViewingTripCode,
   lookupDoc,
   serviceLink,
   type EmbalmRequest,
@@ -144,7 +145,14 @@ const REQUEST_LABELS: [keyof EmbalmRequest, string, Record<string, string>][] = 
   ],
 ];
 
-export type StepId = "tag" | "embalm" | "casket";
+export type StepId = "tag" | "embalm" | "casket" | "delivered";
+
+/** Each later step unlocks once the one before it is confirmed. */
+const PREVIOUS_STEP: Record<Exclude<StepId, "tag">, StepId> = {
+  embalm: "tag",
+  casket: "embalm",
+  delivered: "casket",
+};
 
 export type ServiceSummary = {
   caseId: string;
@@ -185,6 +193,8 @@ export type ServiceHome = {
     remarks: string;
   };
   casket: { casketDesign: string };
+  /** The trip to an outside viewing venue, when the service has one. */
+  viewingTrip: { rows: [string, string][] } | null;
   profile: [string, string][];
 };
 
@@ -351,6 +361,17 @@ export async function confirmTag(
   return { ok: true, confirmedAt };
 }
 
+/**
+ * Whether this browser has already confirmed the link's toe tag. Asked before
+ * the last name, so a returning family is not walked through the steps again;
+ * it is only a yes or no, read from the family's own cookie.
+ */
+export async function tagConfirmedHere(token: string): Promise<boolean> {
+  const link = serviceLink(token);
+  if (!link) return false;
+  return !!(await readRecord(link.caseId)).done.tag;
+}
+
 /** The service home. Released only once the toe tag has been confirmed. */
 export async function getServiceHome(
   token: string,
@@ -366,6 +387,7 @@ export async function getServiceHome(
 
   const trip = lookupDoc(findTripCode(caseId) ?? "");
   const ticket = lookupDoc(findEmbalmCode(caseId) ?? "");
+  const viewing = lookupDoc(findViewingTripCode(caseId) ?? "");
   const extra = FAMILY_DEMO[caseId];
   const requested = embalmRequestFor(caseId);
   const now = Date.now();
@@ -401,6 +423,17 @@ export async function getServiceHome(
         remarks: extra?.remarks ?? "—",
       },
       casket: { casketDesign: trip?.casket ?? "—" },
+      viewingTrip: viewing
+        ? {
+            rows: [
+              ["Viewing venue", viewing.destination ?? "—"],
+              ["Brought from", viewing.pickup ?? "—"],
+              ["Vehicle", viewing.vehicle ?? "—"],
+              ["Driver", viewing.driver ?? "—"],
+              ["Trip ticket", viewing.code],
+            ],
+          }
+        : null,
       profile: [
         ["Name", trip?.contact ?? "—"],
         ["Relationship", extra?.relationship ?? "—"],
@@ -448,16 +481,18 @@ export async function checkCasket(
 export async function confirmStep(
   token: string,
   lastName: string,
-  step: "embalm" | "casket",
+  step: "embalm" | "casket" | "delivered",
   casketCode = "",
 ): Promise<{ ok: true; confirmedAt: string } | Fail> {
   const auth = authorize(token, lastName);
   if ("ok" in auth) return auth;
   const saved = await readRecord(auth.caseId);
   const done = saved.done;
-  const before = step === "embalm" ? "tag" : "embalm";
+  const before = PREVIOUS_STEP[step];
   if (!done[before])
     return { ok: false, error: "Please complete the earlier step first." };
+  if (step === "delivered" && !findViewingTripCode(auth.caseId))
+    return { ok: false, error: "This service has no trip to a viewing venue." };
   if (step === "casket") {
     const doc = lookupDoc(casketCode);
     if (!doc || doc.kind !== "ck" || doc.caseId !== auth.caseId)

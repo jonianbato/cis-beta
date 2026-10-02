@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { serviceLink } from "@/app/(app)/scanner/data";
+import { tagConfirmedHere } from "./actions";
 import { FamilyProvider } from "./family-context";
 
 /**
@@ -46,5 +47,9 @@ export default async function ServiceLinkLayout({
 }: LayoutProps<"/service/[token]">) {
   const { token } = await params;
   if (!serviceLink(token)) notFound();
-  return <FamilyProvider token={token}>{children}</FamilyProvider>;
+  return (
+    <FamilyProvider token={token} returning={await tagConfirmedHere(token)}>
+      {children}
+    </FamilyProvider>
+  );
 }

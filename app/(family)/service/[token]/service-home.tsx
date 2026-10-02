@@ -28,7 +28,7 @@ import {
   Viewfinder,
 } from "./family-ui";
 
-type SheetId = "embalm" | "casket";
+type SheetId = "embalm" | "casket" | "delivered";
 type SheetScan = "idle" | "scanning" | "checking" | "ok";
 
 /** The later authorizations, after the toe tag, in the order they unlock. */
@@ -60,6 +60,16 @@ const ACTIONS: {
     body: "Scan the barcode on the casket. We will match it with the deceased information for this service.",
     consent:
       "I confirm the casket and deceased information are correct. The viewing may begin.",
+  },
+  {
+    id: "delivered",
+    title: "Confirm arrival at viewing venue",
+    desc: "Confirm that your loved one has been brought to the viewing venue.",
+    cta: "Review & confirm",
+    btn: "CONFIRM ARRIVAL",
+    body: "Our team has brought your loved one from the chapel to the viewing venue. Please confirm once the casket has arrived and been received by your family.",
+    consent:
+      "I confirm my loved one has been brought to the viewing venue and received by our family.",
   },
 ];
 
@@ -229,7 +239,10 @@ export function ServiceHomePage() {
       cta: "",
       stampPrefix: "Toe tag verified ",
     },
-    ...ACTIONS.map((action) => ({ ...action, stampPrefix: "Confirmed " })),
+    ...ACTIONS.filter(
+      // Only a wake held outside the chapel has an arrival to confirm.
+      (action) => action.id !== "delivered" || !!home.viewingTrip,
+    ).map((action) => ({ ...action, stampPrefix: "Confirmed " })),
   ];
   const nextIdx = steps.findIndex((item) => !home.done[item.id]);
   const doneCount = steps.filter((item) => home.done[item.id]).length;
@@ -496,7 +509,7 @@ export function ServiceHomePage() {
               </Flex>
             )}
 
-            {(sheet === "embalm" || scan === "ok") && (
+            {(sheet !== "casket" || scan === "ok") && (
               <Flex direction="column" gap="16px">
                 {sheet === "casket" && <OkStrip>Casket barcode matches this service</OkStrip>}
 
@@ -589,7 +602,9 @@ export function ServiceHomePage() {
                             ["Embalming", `Completed ${home.embalming.completed}`],
                             ["Casket design", home.embalming.casketDesign],
                           ]
-                        : casketRows
+                        : sheet === "delivered"
+                          ? (home.viewingTrip?.rows ?? [])
+                          : casketRows
                     }
                   />
                 </Box>
@@ -609,8 +624,8 @@ export function ServiceHomePage() {
                     {sheetDef.consent}
                   </Text>
                 </chakra.label>
-                {/* The embalming sheet has no scan, so its errors show as they come. */}
-                {error && (sheet === "embalm" || scan === "ok") && (
+                {/* Only the casket sheet scans first; the others show errors as they come. */}
+                {error && (sheet !== "casket" || scan === "ok") && (
                   <Text fontSize="13px" color={P.errText} role="alert">
                     {error}
                   </Text>
