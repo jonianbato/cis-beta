@@ -4,6 +4,12 @@
    theme, so no body-level font or color overrides here — they would win
    over the design system by specificity. */
 
+/* No double-tap zoom on any page; pinch is handled by the viewport meta and
+   app/no-zoom.tsx. Taps also lose the 300ms delay this way. */
+html {
+  touch-action: manipulation;
+}
+
 /* The Personnel Scan palette (read through app/(app)/scanner/theme.ts). Light
    pins the scan design's own greens; dark follows the kit's green dark theme
    so the scanner matches the app shell. The kit's ColorModeProvider sets

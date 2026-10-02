@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import Providers from "./providers";
 import RegisterServiceWorker from "./register-service-worker";
+import NoZoom from "./no-zoom";
 import { INSTALL_PROMPT_SCRIPT } from "@/lib/install-prompt-script";
 
 export const metadata: Metadata = {
@@ -25,6 +26,13 @@ export const viewport: Viewport = {
   themeColor: "#109448",
   // An installed app runs edge to edge; without this the safe areas are unusable.
   viewportFit: "cover",
+  // The app behaves as a native one: no pinch or double-tap zoom, and no
+  // automatic zoom when a small-text field takes focus. iOS Safari ignores
+  // user-scalable for pinch, so NoZoom covers that gesture as well.
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -45,6 +53,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
         <Providers>{children}</Providers>
         <RegisterServiceWorker />
+        <NoZoom />
       </body>
     </html>
   );
