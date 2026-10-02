@@ -8,12 +8,14 @@ import { playScanFeedback, unlockScanSound } from "@/lib/scan-feedback";
 import {
   DEMO_OTP,
   DESTINATION_CHAPEL,
+  CONTRACTING_PARTY,
   OTP_TTL_MS,
   PIPELINES,
   RECEIVERS,
   RECEIVER_ROLES,
   embalmerFor,
   embalmRequestFor,
+  findCasketCode,
   findEmbalmCode,
   findTagCode,
   findTripCode,
@@ -48,7 +50,7 @@ import {
   OtpScreen,
   ProcessScreen,
 } from "./screen-steps";
-import { CasketScreen, PhotoScreen, PhotoViewer } from "./screen-capture";
+import { PhotoScreen, PhotoViewer } from "./screen-capture";
 import {
   EmbalmRequestScreen,
   EmbalmScreen,
@@ -71,7 +73,6 @@ type Screen =
   | "endorse"
   | "receiveTag"
   | "scanCasket"
-  | "casket"
   | "photo"
   | "authorize"
   | "appWait"
@@ -169,7 +170,6 @@ const PIPE_SCREENS: Screen[] = [
   "endorse",
   "receiveTag",
   "scanCasket",
-  "casket",
   "photo",
   "authorize",
   "appWait",
@@ -342,6 +342,8 @@ export default function PersonnelScan() {
   // The photo that confirms receiving at the chapel is the receiver's, not the
   // driver's toe-tagging photo.
   const receiving = curStep?.key === "receive";
+  // The CM/FCR's own check of an encasketed deceased, made the same way.
+  const confirmingReady = curStep?.key === "readyConfirm";
 
   const remaining = state.otpSentAt
     ? Math.max(0, OTP_TTL_MS - (now - state.otpSentAt))
@@ -351,6 +353,8 @@ export default function PersonnelScan() {
   const embalmRequest = embalmRequestFor(trip?.caseId ?? "");
   const procedure = trip ? state.embalmTimes[trip.caseId] : undefined;
   const preEmbalmPhoto = trip ? (state.preEmbalmPhotos[trip.caseId] ?? "") : "";
+  // The casket on the contract, and the room it lies in state in.
+  const casketDoc = trip ? lookupDoc(findCasketCode(trip.caseId) ?? "") : null;
   const embalmReady = !!(
     state.em.embalmer &&
     state.em.start &&
@@ -441,11 +445,17 @@ export default function PersonnelScan() {
             // A mismatch here is the whole point of the check, so it goes on
             // the log even though the operator never left the screen.
             const receiving = s.screen === "receiveTag";
-            const where = receiving
-              ? "at chapel receiving"
-              : s.pipeline === "embalm"
-                ? "before embalming"
-                : "at departure";
+            const confirmingReady = s.stepKey === "readyConfirm";
+            const encasketing = s.stepKey === "encasket";
+            const where = confirmingReady
+              ? "at ready-for-viewing confirmation"
+              : receiving
+                ? "at chapel receiving"
+                : encasketing
+                  ? "before encasketing"
+                  : s.pipeline === "embalm"
+                    ? "before embalming"
+                    : "at departure";
             const entry: LogEntry = {
               text: `Mismatch ${where} · ${doc.code} ≠ ${s.trip?.caseId}`,
               tone: "bad",
@@ -454,11 +464,15 @@ export default function PersonnelScan() {
             return {
               ...reject(
                 `MISMATCH — ${doc.code} is for ${doc.deceased}. ${
-                  receiving
-                    ? "Do not receive the deceased"
-                    : s.pipeline === "embalm"
-                      ? "Do not proceed with embalming"
-                      : "Do not leave the chapel"
+                  confirmingReady
+                    ? "Do not open the casket for viewing"
+                    : receiving
+                      ? "Do not receive the deceased"
+                      : encasketing
+                        ? "Do not encasket"
+                        : s.pipeline === "embalm"
+                          ? "Do not proceed with embalming"
+                          : "Do not leave the chapel"
                 }; notify your supervisor.`,
               ),
               log: [entry, ...s.log].slice(0, LOG_LIMIT),
@@ -471,6 +485,21 @@ export default function PersonnelScan() {
           if (!doc || doc.kind !== "ck")
             return reject("Scan the barcode on the casket tag (CK-…).");
           if (!s.trip || doc.caseId !== s.trip.caseId) {
+            if (s.stepKey === "encasket") {
+              // The second casket scan is the last check before the deceased
+              // goes in, so a wrong one is logged like a toe-tag mismatch.
+              const entry: LogEntry = {
+                text: `Casket mismatch before encasketing · ${doc.code} ≠ ${s.trip?.caseId}`,
+                tone: "bad",
+                at: stamp(),
+              };
+              return {
+                ...reject(
+                  `MISMATCH — ${doc.code} is for ${doc.deceased}, but toe tag ${s.tag?.code ?? ""} is for ${s.trip?.deceased}. Do not encasket; notify your supervisor.`,
+                ),
+                log: [entry, ...s.log].slice(0, LOG_LIMIT),
+              };
+            }
             if (s.pipeline !== "viewing")
               return reject(
                 `${doc.code} is assigned to ${doc.deceased}. Wrong casket.`,
@@ -602,13 +631,13 @@ export default function PersonnelScan() {
       case "scanCasket":
         go("scanCasket", { casketTag: "", ...extra });
         return;
-      case "casket":
-        go("casket", extra);
-        return;
       case "endorse":
         go("endorse", {
-          receiverRole: RECEIVER_ROLES[0],
-          receiverName: "",
+          // An embalmed deceased goes back to the contracting party on record,
+          // so there is no one to pick; once encasketed, to a CM/FCR.
+          ...((extra.stepKey ?? state.stepKey) === "endorseFamily"
+            ? { receiverRole: CONTRACTING_PARTY, receiverName: trip?.contact ?? "" }
+            : { receiverRole: RECEIVER_ROLES[0], receiverName: "" }),
           ...extra,
         });
         return;
@@ -718,31 +747,36 @@ export default function PersonnelScan() {
     );
   };
 
-  const saveEmbalming = () => {
-    if (!trip) return;
+  /** The summary is filled first, then saved once the casket is scanned. */
+  const toCasketScan = () => {
     if (state.em.end <= state.em.start) {
       flash("End time must be after the start time.");
       return;
     }
+    completeTask();
+  };
+
+  // Only the summary is saved here: the deceased is not encasketed until the
+  // family has authorized it.
+  const saveEmbalming = () => {
+    if (!trip) return;
     setState((s) => ({
       ...s,
       embalmRecords: { ...s.embalmRecords, [trip.caseId]: { ...s.em } },
     }));
-    addLog(`Embalming summary saved · ${trip.deceased}`, "good");
+    addLog(
+      `Embalming summary saved · ${state.casketTag} · ${trip.deceased}`,
+      "good",
+    );
     completeTask();
   };
 
-  const confirmCasketing = () => {
-    const doc = lookupDoc(state.casketTag);
-    if (!doc || doc.kind !== "ck") {
-      flash("Enter a valid casket tag (CK-…).");
-      return;
-    }
-    if (!trip || doc.caseId !== trip.caseId) {
-      flash(`${doc.code} is assigned to another service.`);
-      return;
-    }
-    addLog(`Casketed · ${doc.code} · ${trip.deceased}`, "good");
+  const encasket = () => {
+    if (!trip) return;
+    addLog(
+      `Matched ${tag?.code ?? trip.caseId} ↔ ${state.casketTag} · encasketed · ${trip.deceased}`,
+      "good",
+    );
     completeTask();
   };
 
@@ -762,20 +796,29 @@ export default function PersonnelScan() {
             : "trip";
 
   const who = trip?.deceased ?? "this service";
+  const encasketing = curStep?.key === "encasket";
   const scanHint =
     scanKind === "lookup"
       ? "Scan the barcode on any casket tag to see who is in the casket and which room they are in."
       : scanKind === "casket"
       ? viewing
         ? `Before leaving the chapel, scan the casket barcode. It must be ${who}'s casket to match trip ticket ${trip?.code ?? ""}.`
-        : `Scan the barcode on the casket tag for ${who} · ${trip?.casket ?? ""}`
+        : encasketing
+          ? `Scan the casket barcode again. It must be ${who}'s casket to match toe tag ${tag?.code ?? ""}.`
+          : `Scan the barcode on the casket tag for ${who} · ${trip?.casket ?? ""}`
       : state.screen === "receiveTag"
         ? `${state.receiverRole}${
             state.receiverName.trim() ? ` ${state.receiverName.trim()}` : ""
-          }: confirm receiving ${who} by scanning the toe tag QR.`
+          }: confirm ${
+            confirmingReady ? `${who} is ready for viewing` : `receiving ${who}`
+          } by scanning the toe tag QR.`
         : scanKind === "checkTag"
         ? `${
-            state.pipeline === "embalm" ? "Before embalming" : "Before leaving the chapel"
+            encasketing
+              ? "Before encasketing"
+              : state.pipeline === "embalm"
+                ? "Before embalming"
+                : "Before leaving the chapel"
           }, scan the toe tag for ${who} to match with ${trip?.code ?? "the ticket"}.`
         : scanKind === "process"
           ? "Scan any QR of the service. The system shows the next step to authorize."
@@ -800,21 +843,33 @@ export default function PersonnelScan() {
     result: [matched ? "Match Confirmation" : "Mismatch", "QR Matching"],
     scanProcess: ["Scan QR to Process", "Retrieval, viewing or embalming"],
     processPick: ["Service Process", pipelineLabel],
-    casket: ["Casketing", trip?.deceased ?? ""],
     scanCasket: [
       "Scan Casket Barcode",
-      viewing ? "Casket matching · before the trip" : (trip?.deceased ?? ""),
+      viewing
+        ? "Casket matching · before the trip"
+        : encasketing
+          ? "Encasketing · casket matching"
+          : (trip?.deceased ?? ""),
     ],
     checkTag: [
       "Scan Toe Tag",
-      state.pipeline === "embalm"
-        ? "Matching · preparation room"
-        : "Departure check · at the chapel",
+      encasketing
+        ? "Encasketing · toe tag matching"
+        : state.pipeline === "embalm"
+          ? "Matching · preparation room"
+          : "Departure check · at the chapel",
     ],
-    endorse: ["Endorse Deceased", "Return to chapel · embalming"],
+    endorse: [
+      "Endorse Deceased",
+      curStep?.key === "endorseFamily"
+        ? "To the contracting party · authorize encasketing"
+        : curStep?.key === "endorseCm"
+          ? "To the CM/FCR · ready for viewing"
+          : "Return to chapel · embalming",
+    ],
     receiveTag: [
       "Scan Toe Tag",
-      `Receiving confirmation · ${state.receiverRole}`,
+      `${confirmingReady ? "Ready for viewing" : "Receiving confirmation"} · ${state.receiverRole}`,
     ],
     depart: [
       viewing ? "Depart to Viewing Venue" : "Depart to Chapel",
@@ -919,10 +974,10 @@ export default function PersonnelScan() {
         primary: {
           label: "Continue",
           enabled: !!state.scanned,
-          // Until embalming has ended, its toe tag scan opens on the request.
+          // Until the summary is saved, the toe tag scan opens on the request.
           onClick: () =>
             go(
-              state.pipeline === "embalm" && nextStep
+              state.pipeline === "embalm" && nextStep?.key === "embalm"
                 ? "embalmRequest"
                 : "processPick",
             ),
@@ -1020,9 +1075,11 @@ export default function PersonnelScan() {
             if (!trip || !tag) return;
             addLog(
               `Matched ${trip.code} ↔ ${tag.code} · ${
-                state.pipeline === "embalm"
-                  ? "cleared for embalming"
-                  : "cleared to leave chapel"
+                encasketing
+                  ? "toe tag confirmed for encasketing"
+                  : state.pipeline === "embalm"
+                    ? "cleared for embalming"
+                    : "cleared to leave chapel"
               }`,
               "good",
             );
@@ -1033,35 +1090,38 @@ export default function PersonnelScan() {
       break;
     case "scanCasket":
       footer = {
-        primary: {
-          label: viewing ? "Confirm match · proceed to trip" : "Next",
-          enabled: !!state.scanned,
-          onClick: () => {
-            if (viewing && trip)
-              addLog(
-                `Matched ${trip.code} ↔ ${state.casketTag} · cleared for viewing trip`,
-                "good",
-              );
-            completeTask();
-          },
-        },
-      };
-      break;
-    case "casket":
-      footer = {
-        primary: {
-          label: "Confirm casketing",
-          enabled: !!state.casketTag,
-          onClick: confirmCasketing,
-        },
+        primary: viewing
+          ? {
+              label: "Confirm match · proceed to trip",
+              enabled: !!state.scanned,
+              onClick: () => {
+                if (trip)
+                  addLog(
+                    `Matched ${trip.code} ↔ ${state.casketTag} · cleared for viewing trip`,
+                    "good",
+                  );
+                completeTask();
+              },
+            }
+          : encasketing
+            ? {
+                label: "Confirm match · encasket",
+                enabled: !!state.scanned,
+                onClick: encasket,
+              }
+            : {
+                label: "Save embalming summary",
+                enabled: !!state.scanned,
+                onClick: saveEmbalming,
+              },
       };
       break;
     case "embalm":
       footer = {
         primary: {
-          label: "Save embalming summary",
+          label: "Next: scan casket",
           enabled: embalmReady,
-          onClick: saveEmbalming,
+          onClick: toCasketScan,
         },
       };
       break;
@@ -1093,7 +1153,10 @@ export default function PersonnelScan() {
     case "endorse":
       footer = {
         primary: {
-          label: `Endorse to ${state.receiverRole}`,
+          label:
+            state.receiverRole === CONTRACTING_PARTY
+              ? "Endorse to contracting party"
+              : `Endorse to ${state.receiverRole}`,
           enabled: !!state.receiverName.trim(),
           onClick: () => {
             if (!trip) return;
@@ -1118,7 +1181,11 @@ export default function PersonnelScan() {
     case "photo":
       footer = {
         primary: {
-          label: receiving ? "Confirm received" : "Next",
+          label: receiving
+            ? "Confirm received"
+            : confirmingReady
+              ? "Confirm ready for viewing"
+              : "Next",
           enabled: !!state.photoUrl,
           onClick: () => {
             if (receiving && trip)
@@ -1126,6 +1193,13 @@ export default function PersonnelScan() {
                 `Received at chapel · ${tag?.code ?? trip.caseId} · by ${state.receiverRole} ${state.receiverName.trim()}`,
                 "good",
               );
+            if (confirmingReady && trip) {
+              addLog(
+                `Ready for viewing · ${trip.deceased} · confirmed by ${state.receiverRole} ${state.receiverName.trim()}`,
+                "good",
+              );
+              flash(`${trip.deceased} is ready for viewing.`);
+            }
             completeTask();
           },
         },
@@ -1282,27 +1356,71 @@ export default function PersonnelScan() {
               />
             )}
 
-            {state.screen === "endorse" && trip && (
-              <EndorseScreen
-                roles={RECEIVER_ROLES}
-                role={state.receiverRole}
-                // A name picked for one role is not on the other's list.
-                onRoleChange={(receiverRole) =>
-                  setState((s) => ({ ...s, receiverRole, receiverName: "" }))
-                }
-                people={RECEIVERS[state.receiverRole] ?? []}
-                name={state.receiverName}
-                onNameChange={(receiverName) =>
-                  setState((s) => ({ ...s, receiverName }))
-                }
-                rows={[
-                  ["Deceased", trip.deceased ?? "—"],
-                  ["Service ID", trip.caseId],
-                  ["Toe tag", tag?.code ?? findTagCode(trip.caseId) ?? "—"],
-                  ["Endorsed by", trip.driver ?? "—"],
-                ]}
-              />
-            )}
+            {state.screen === "endorse" &&
+              trip &&
+              (curStep?.key === "endorseFamily" ? (
+                <EndorseScreen
+                  intro={`Embalming is done. Endorse ${trip.deceased} to the contracting party for viewing before encasketing. They authorize encasketing in the next step with an OTP or in their app.`}
+                  rows={[
+                    ["Deceased", trip.deceased ?? "—"],
+                    ["Service ID", trip.caseId],
+                    ["Toe tag", tag?.code ?? findTagCode(trip.caseId) ?? "—"],
+                    ["Casket", casketDoc?.code ?? "—"],
+                    ["Endorsed to", trip.contact ?? "—"],
+                    [
+                      "Endorsed by",
+                      state.embalmRecords[trip.caseId]?.embalmer ||
+                        (trip.embalmer ?? "—"),
+                    ],
+                  ]}
+                />
+              ) : curStep?.key === "endorseCm" ? (
+                <EndorseScreen
+                  intro={`Encasketing is done. Endorse ${trip.deceased} to the CM/FCR on duty. They confirm the deceased is ready for viewing in the next step by scanning the toe tag QR and taking a photo.`}
+                  picker={{
+                    roles: [RECEIVER_ROLES[0]],
+                    role: state.receiverRole,
+                    onRoleChange: () => {},
+                    people: RECEIVERS[RECEIVER_ROLES[0]] ?? [],
+                    name: state.receiverName,
+                    onNameChange: (receiverName) =>
+                      setState((s) => ({ ...s, receiverName })),
+                  }}
+                  rows={[
+                    ["Deceased", trip.deceased ?? "—"],
+                    ["Service ID", trip.caseId],
+                    ["Toe tag", tag?.code ?? findTagCode(trip.caseId) ?? "—"],
+                    ["Casket", casketDoc?.code ?? "—"],
+                    ["Room", casketDoc?.room ?? "—"],
+                    [
+                      "Endorsed by",
+                      state.embalmRecords[trip.caseId]?.embalmer ||
+                        (trip.embalmer ?? "—"),
+                    ],
+                  ]}
+                />
+              ) : (
+                <EndorseScreen
+                  intro="Return to chapel · embalming. Endorse the deceased to the CM/FCR or the guard on duty. They confirm receiving in the next step by scanning the toe tag QR and taking a photo."
+                  picker={{
+                    roles: RECEIVER_ROLES,
+                    role: state.receiverRole,
+                    // A name picked for one role is not on the other's list.
+                    onRoleChange: (receiverRole) =>
+                      setState((s) => ({ ...s, receiverRole, receiverName: "" })),
+                    people: RECEIVERS[state.receiverRole] ?? [],
+                    name: state.receiverName,
+                    onNameChange: (receiverName) =>
+                      setState((s) => ({ ...s, receiverName })),
+                  }}
+                  rows={[
+                    ["Deceased", trip.deceased ?? "—"],
+                    ["Service ID", trip.caseId],
+                    ["Toe tag", tag?.code ?? findTagCode(trip.caseId) ?? "—"],
+                    ["Endorsed by", trip.driver ?? "—"],
+                  ]}
+                />
+              ))}
 
             {state.screen === "embalmRequest" && trip && (
               <EmbalmRequestScreen
@@ -1314,11 +1432,7 @@ export default function PersonnelScan() {
                     ? "For embalming · not yet started"
                     : !procedure.end
                       ? `Embalming on process · started ${procedure.startedAt}`
-                      : `Embalming finished ${procedure.endedAt ?? ""} · ${
-                          state.embalmRecords[trip.caseId]
-                            ? "casketing pending"
-                            : "summary pending"
-                        }`
+                      : `Embalming finished ${procedure.endedAt ?? ""} · summary pending`
                 }
                 rows={[
                   ["Toe tag", tag?.code ?? "—"],
@@ -1362,30 +1476,23 @@ export default function PersonnelScan() {
               />
             )}
 
-            {state.screen === "casket" && trip && (
-              <CasketScreen
-                model={trip.casket ?? "Per contract"}
-                casketTag={state.casketTag}
-              />
-            )}
-
             {state.screen === "photo" && (
               <PhotoScreen
-                showSample={state.pipeline !== "embalm" && !receiving}
+                showSample={!receiving && !confirmingReady}
                 photoUrl={state.photoUrl}
                 onPick={pickPhoto}
                 hint={
                   receiving
                     ? `${state.receiverRole}: take a photo of the deceased as received at the chapel, before endorsing for embalming.`
-                    : state.pipeline === "embalm"
-                      ? "Embalmer: take a photo of the deceased after embalming and casketing, before family authorization."
+                    : confirmingReady
+                      ? `${state.receiverRole}: take a photo of the deceased in the casket, ready for viewing.`
                       : "Driver: hold the toe tag in front of the camera with the deceased in the background. The tag is attached after family authorization."
                 }
                 rule={
                   receiving
                     ? `Deceased's face and the attached toe tag${tag ? ` (${tag.code})` : ""} must be visible in the photo.`
-                    : state.pipeline === "embalm"
-                      ? `Face, casket and the toe tag QR${tag ? ` (${tag.code})` : ""} must be visible in the photo.`
+                    : confirmingReady
+                      ? "Deceased's face and the casket must be visible in the photo."
                       : `Toe tag QR${tag ? ` (${tag.code})` : ""} in focus in front, deceased's face visible behind it.`
                 }
               />
@@ -1444,7 +1551,9 @@ export default function PersonnelScan() {
                         }by ${trip.contact}. ${
                           curStep?.key === "tagging"
                             ? "Attach the toe tag to the deceased and proceed with the retrieval."
-                            : "You may proceed."
+                            : curStep?.key === "endorseFamily"
+                              ? "Proceed with encasketing."
+                              : "You may proceed."
                         }`
                       : ""}
               </Outcome>

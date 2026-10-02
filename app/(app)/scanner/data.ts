@@ -327,8 +327,7 @@ export type TaskScreen =
   | "depart"
   | "arrive"
   | "embalm"
-  | "scanCasket"
-  | "casket";
+  | "scanCasket";
 
 export type PipelineStep = {
   key: string;
@@ -344,8 +343,8 @@ export type PipelineStep = {
 /**
  * The scanned service decides its own next step — personnel never pick one.
  * Progress is tracked per pipeline, so embalming never inherits retrieval's
- * toe-tag step. Every step but the matching checks and the retrieval's
- * arrival and endorsement at the chapel ends with a family OTP.
+ * toe-tag step. Only the toe tagging, the viewing handover and the embalmed
+ * deceased's endorsement to the family end with a family OTP.
  */
 export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
   retrieval: [
@@ -403,13 +402,47 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
     },
   ],
   // Opened by the toe tag once the retrieval is finished: the tag scan shows
-  // the embalming request, so there is no separate ticket check.
+  // the embalming request, so there is no separate ticket check. The casket
+  // is only checked against the service with the summary; the deceased goes
+  // into it once the family has authorized encasketing.
   embalm: [
     {
       key: "embalm",
-      label: "Embalming & casketing",
-      hint: "Embalming summary, casketing, photo of deceased · family OTP to proceed",
-      tasks: ["embalm", "scanCasket", "casket", "photo"],
+      label: "Embalming summary",
+      hint: "Record what was performed and scan the casket barcode · saves the summary",
+      tasks: ["embalm", "scanCasket"],
+      otp: false,
+      doneLabel: "Summary saved",
+    },
+    {
+      key: "endorseFamily",
+      label: "Endorse to contracting party",
+      hint: "Hand the embalmed deceased over to the contracting party · their OTP authorizes encasketing",
+      tasks: ["endorse"],
+    },
+    {
+      key: "encasket",
+      label: "Encasketing",
+      hint: "Scan the toe tag and the casket barcode again · encasket when both match",
+      tasks: ["checkTag", "scanCasket"],
+      otp: false,
+      doneLabel: "Encasketed",
+    },
+    {
+      key: "endorseCm",
+      label: "Endorse to CM/FCR",
+      hint: "Hand the encasketed deceased over to the CM/FCR on duty",
+      tasks: ["endorse"],
+      otp: false,
+      doneLabel: "Endorsed",
+    },
+    {
+      key: "readyConfirm",
+      label: "Ready for viewing confirmation",
+      hint: "CM/FCR scans the toe tag QR and takes a photo of the deceased in the casket",
+      tasks: ["receiveTag", "photo"],
+      otp: false,
+      doneLabel: "Ready for viewing",
     },
   ],
 };
@@ -422,6 +455,12 @@ export const RECEIVERS: Record<string, string[]> = {
   "CM/FCR": ["Cruz, Ana", "Mendoza, Carlo", "Garcia, Liza"],
   Guard: ["Ramos, Ben", "Torres, Jun", "Bautista, Rey"],
 };
+
+/**
+ * Who the embalmed deceased is endorsed to: the contracting party on the
+ * service (`contact`), the same person who authorizes each step.
+ */
+export const CONTRACTING_PARTY = "Contracting party";
 
 export const EMBALMERS = [
   "",

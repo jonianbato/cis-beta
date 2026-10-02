@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Box, Flex, Grid, Text, chakra } from "@chakra-ui/react";
 import { Camera, Expand, ImageUp, QrCode, User, X } from "lucide-react";
 import { C } from "./theme";
-import { ConfirmedStrip, Panel } from "./chrome";
+import { Panel } from "./chrome";
 
 const PHOTO_STEPS = [
   "Frame the deceased's face inside the corners.",
@@ -339,30 +339,6 @@ export function PhotoViewer({
           </Flex>
         </Flex>
       )}
-    </>
-  );
-}
-
-/** Confirming the deceased is in the casket the contract names. */
-export function CasketScreen({
-  model,
-  casketTag,
-}: {
-  model: string;
-  casketTag: string;
-}) {
-  return (
-    <>
-      <Panel px="14px" py="12px">
-        <Text fontSize="10.5px" fontWeight={700} color={C.fainter}>
-          Casket per contract
-        </Text>
-        <Text fontSize="15px" fontWeight={800} color={C.ink} mt="2px">
-          {model}
-        </Text>
-      </Panel>
-
-      <ConfirmedStrip label="Casket barcode scanned" value={casketTag} />
     </>
   );
 }

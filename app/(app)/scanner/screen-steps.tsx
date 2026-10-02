@@ -222,33 +222,35 @@ export function MoveScreen({
 }
 
 /**
- * Back at the chapel, the crew hands the deceased over for embalming. The
- * receiver is named here; confirming the receipt is the next step, theirs.
+ * A hand-over that names who takes the deceased: the crew to the CM/FCR or
+ * guard back at the chapel, or the embalmer to the contracting party before
+ * encasketing and to the CM/FCR once the deceased is ready for viewing.
  */
 export function EndorseScreen({
-  roles,
-  role,
-  onRoleChange,
-  people,
-  name,
-  onNameChange,
+  intro,
   rows,
+  picker,
 }: {
-  roles: string[];
-  role: string;
-  onRoleChange: (next: string) => void;
-  /** The staff on duty in the chosen role. */
-  people: string[];
-  name: string;
-  onNameChange: (next: string) => void;
+  intro: string;
   rows: [string, string][];
+  /**
+   * Who takes the deceased, when it is a choice: the staff on duty. Left out
+   * when the receiver is already on record, like the contracting party.
+   */
+  picker?: {
+    roles: string[];
+    role: string;
+    onRoleChange: (next: string) => void;
+    /** The staff on duty in the chosen role. */
+    people: string[];
+    name: string;
+    onNameChange: (next: string) => void;
+  };
 }) {
   return (
     <>
       <Text fontSize="12.5px" color={C.muted} lineHeight="1.5">
-        Return to chapel · embalming. Endorse the deceased to the CM/FCR or the
-        guard on duty. They confirm receiving in the next step by scanning the
-        toe tag QR and taking a photo.
+        {intro}
       </Text>
 
       <Panel overflow="hidden">
@@ -262,31 +264,42 @@ export function EndorseScreen({
         ))}
       </Panel>
 
-      <Box>
-        <Text {...fieldLabel}>Endorse to</Text>
-        <Segmented options={roles} value={role} onChange={onRoleChange} />
-      </Box>
+      {picker && (
+        <>
+          {/* A single role is a given, so there is nothing to switch. */}
+          {picker.roles.length > 1 && (
+            <Box>
+              <Text {...fieldLabel}>Endorse to</Text>
+              <Segmented
+                options={picker.roles}
+                value={picker.role}
+                onChange={picker.onRoleChange}
+              />
+            </Box>
+          )}
 
-      <Box>
-        <chakra.label htmlFor="endorse-receiver" {...fieldLabel} display="block">
-          Name of {role}
-        </chakra.label>
-        <chakra.select
-          id="endorse-receiver"
-          {...field}
-          value={name}
-          color={name ? C.ink : C.fainter}
-          onChange={(event) => onNameChange(event.target.value)}>
-          <option value="" disabled>
-            Select {role}
-          </option>
-          {people.map((person) => (
-            <option key={person} value={person}>
-              {person}
-            </option>
-          ))}
-        </chakra.select>
-      </Box>
+          <Box>
+            <chakra.label htmlFor="endorse-receiver" {...fieldLabel} display="block">
+              Name of {picker.role}
+            </chakra.label>
+            <chakra.select
+              id="endorse-receiver"
+              {...field}
+              value={picker.name}
+              color={picker.name ? C.ink : C.fainter}
+              onChange={(event) => picker.onNameChange(event.target.value)}>
+              <option value="" disabled>
+                Select {picker.role}
+              </option>
+              {picker.people.map((person) => (
+                <option key={person} value={person}>
+                  {person}
+                </option>
+              ))}
+            </chakra.select>
+          </Box>
+        </>
+      )}
     </>
   );
 }
