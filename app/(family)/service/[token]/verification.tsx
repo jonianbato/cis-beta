@@ -18,6 +18,7 @@ import {
   DEV,
   Eyebrow,
   Heading,
+  InstallLinkBanner,
   Logo,
   MONO,
   ManualEntry,
@@ -289,6 +290,7 @@ export function Verification({
                 service. It can only be used for this service.
               </Text>
             </Card>
+            <InstallLinkBanner token={token} />
             <Box flex="1" />
             <PrimaryButton onClick={() => void submitName()} disabled={busy}>
               {busy ? "Checking…" : "Continue"}

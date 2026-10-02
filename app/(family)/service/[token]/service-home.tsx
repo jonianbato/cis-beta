@@ -18,6 +18,7 @@ import {
   Card,
   DEV,
   Eyebrow,
+  InstallLinkBanner,
   MONO,
   ManualEntry,
   OkStrip,
@@ -298,6 +299,7 @@ export function ServiceHomePage() {
       <DashboardHeaderMobile title="One St. Peter" subtitle="Family Service Link" />
       <FamilyPage>
         <Flex direction="column" gap="20px">
+          <InstallLinkBanner token={token} />
           <Card p="20px" display="flex" flexDirection="column" gap="14px">
             <Flex direction="column" gap="4px">
               <Eyebrow>IN LOVING MEMORY</Eyebrow>

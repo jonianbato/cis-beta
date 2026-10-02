@@ -87,9 +87,9 @@ function subscribeToDismissal(onChange: () => void): () => void {
   };
 }
 
-function getIsDismissed(): boolean {
+function readDismissed(key: string): boolean {
   try {
-    return window.localStorage.getItem(DISMISSED_KEY) === "1";
+    return window.localStorage.getItem(key) === "1";
   } catch {
     // Private mode or blocked storage: treat it as not dismissed.
     return false;
@@ -118,7 +118,18 @@ export type InstallPrompt = {
  * has no equivalent API, so there the hook reports that the UI should show
  * Add-to-Home-Screen instructions instead.
  */
-export function useInstallPrompt(): InstallPrompt {
+export function useInstallPrompt(
+  /**
+   * Where the dismissal is remembered. Separate apps on one origin — the staff
+   * app and a family service link — each keep their own, so dismissing one
+   * banner never hides the other.
+   */
+  dismissedKey: string = DISMISSED_KEY,
+): InstallPrompt {
+  const getIsDismissed = useCallback(
+    () => readDismissed(dismissedKey),
+    [dismissedKey],
+  );
   const hasPrompt = useSyncExternalStore(
     subscribeToPrompt,
     getHasPrompt,
@@ -149,12 +160,12 @@ export function useInstallPrompt(): InstallPrompt {
 
   const dismiss = useCallback(() => {
     try {
-      window.localStorage.setItem(DISMISSED_KEY, "1");
+      window.localStorage.setItem(dismissedKey, "1");
     } catch {
       // Storage unavailable: the banner still goes away for this page load.
     }
     dismissListeners.forEach((listener) => listener());
-  }, []);
+  }, [dismissedKey]);
 
   const needsIosInstructions = IS_IOS_SAFARI && !hasPrompt;
 

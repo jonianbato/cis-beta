@@ -3,7 +3,8 @@
 import type { ReactNode, RefObject } from "react";
 import Image from "next/image";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Share, X } from "lucide-react";
+import { useInstallPrompt } from "@/lib/use-install-prompt";
 import {
   cameraMessage,
   canRetryCamera,
@@ -205,6 +206,99 @@ export function Eyebrow({ children }: { children: ReactNode }) {
     <Text fontSize="11px" letterSpacing=".12em" fontWeight={600} color={P.sage}>
       {children}
     </Text>
+  );
+}
+
+/**
+ * Offers the link as an app on the family's phone. Renders nothing unless the
+ * browser has an install to offer (or it is iOS Safari, which needs the
+ * Share-sheet steps instead), so it costs nothing once installed.
+ */
+export function InstallLinkBanner({ token }: { token: string }) {
+  // Each link is its own app, so each remembers its own dismissal.
+  const { canShow, needsIosInstructions, install, dismiss } = useInstallPrompt(
+    `osp-install-dismissed:${token}`,
+  );
+  if (!canShow) return null;
+
+  return (
+    <Flex
+      role="region"
+      aria-label="Install this service link"
+      gap="12px"
+      align="flex-start"
+      bg={P.surface}
+      border="1px solid"
+      borderColor={P.okLine}
+      borderRadius="12px"
+      px="14px"
+      py="12px">
+      <Image
+        src="/icons/family/icon-192.png"
+        alt=""
+        width={40}
+        height={40}
+        // The banner appears after load; a lazy image there may never start.
+        loading="eager"
+        style={{ borderRadius: 8, flexShrink: 0 }}
+      />
+      <Flex direction="column" gap="4px" flex="1" minW="0">
+        <Text fontSize="14px" fontWeight={600} color={P.ink}>
+          Add this service to your phone
+        </Text>
+        <Text fontSize="13px" lineHeight="1.5" color={P.body}>
+          {needsIosInstructions ? (
+            <>
+              Tap the Share button{" "}
+              <Box as="span" display="inline-flex" verticalAlign="text-bottom">
+                <Share size={14} aria-label="Share" />
+              </Box>{" "}
+              in Safari, then choose &ldquo;Add to Home Screen&rdquo;.
+            </>
+          ) : (
+            "Open it straight from your home screen to follow each step of the service."
+          )}
+        </Text>
+        {!needsIosInstructions && (
+          <chakra.button
+            type="button"
+            onClick={install}
+            alignSelf="flex-start"
+            mt="6px"
+            h="36px"
+            px="14px"
+            border="0"
+            borderRadius="10px"
+            bg={P.green}
+            color={P.onFill}
+            fontFamily="inherit"
+            fontSize="13px"
+            fontWeight={600}
+            cursor="pointer"
+            _hover={{ bg: P.greenHover }}>
+            Install
+          </chakra.button>
+        )}
+      </Flex>
+      <chakra.button
+        type="button"
+        aria-label="Dismiss"
+        onClick={dismiss}
+        w="32px"
+        h="32px"
+        border="0"
+        borderRadius="8px"
+        bg="transparent"
+        color={P.muted}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        cursor="pointer"
+        flexShrink={0}
+        _hover={{ bg: P.chip }}>
+        <X size={16} />
+      </chakra.button>
+    </Flex>
   );
 }
 
