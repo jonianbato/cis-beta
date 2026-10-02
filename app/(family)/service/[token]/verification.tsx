@@ -15,7 +15,6 @@ import {
 } from "./actions";
 import {
   Card,
-  DEV,
   Eyebrow,
   Heading,
   InstallLinkBanner,
@@ -31,6 +30,7 @@ import {
   Viewfinder,
   sleep,
 } from "./family-ui";
+import { SHOW_DEMO_TOOLS } from "./demo-tools";
 
 type Step = "auth" | "scan" | "verify" | "review" | "done";
 
@@ -43,9 +43,9 @@ const PROGRESS_AT: Record<Step, number> = {
   done: 3,
 };
 
-// One-tap codes for trying the page without a printed tag. Never shown to a
-// family on the live site.
-const TAG_SAMPLES = DEV ? ["TAG-2026-000123", "TAG-2026-000124"] : [];
+// One-tap codes for trying the page without a printed tag. Shown only where
+// the demo tools are on (see demo-tools.ts).
+const TAG_SAMPLES = SHOW_DEMO_TOOLS ? ["TAG-2026-000123", "TAG-2026-000124"] : [];
 
 /** How long each verification check shows before the next one starts. */
 const CHECK_MS = 800;

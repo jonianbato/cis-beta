@@ -65,8 +65,6 @@ export const SANS = "var(--family-sans), 'Noto Sans', system-ui, sans-serif";
 export const MONO =
   "var(--family-mono), 'JetBrains Mono', ui-monospace, monospace";
 
-export const DEV = process.env.NODE_ENV !== "production";
-
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 

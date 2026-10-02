@@ -16,7 +16,6 @@ import {
 import { FAMILY_DOCS, useFamily } from "./family-context";
 import {
   Card,
-  DEV,
   Eyebrow,
   InstallLinkBanner,
   MONO,
@@ -28,6 +27,7 @@ import {
   SANS,
   Viewfinder,
 } from "./family-ui";
+import { SHOW_DEMO_TOOLS } from "./demo-tools";
 
 type SheetId = "embalm" | "casket";
 type SheetScan = "idle" | "scanning" | "checking" | "ok";
@@ -64,7 +64,7 @@ const ACTIONS: {
   },
 ];
 
-const CASKET_SAMPLES = DEV ? ["CK-2026-000123", "CK-2026-000124"] : [];
+const CASKET_SAMPLES = SHOW_DEMO_TOOLS ? ["CK-2026-000123", "CK-2026-000124"] : [];
 
 /** Uploads read "Under review" this long on the server; refresh just after. */
 const REVIEW_REFRESH_MS = 2700;
@@ -404,7 +404,7 @@ export function ServiceHomePage() {
             <DocumentsCard />
           </Grid>
 
-          {DEV && (
+          {SHOW_DEMO_TOOLS && (
             <chakra.button
               type="button"
               onClick={async () => {
