@@ -27,7 +27,6 @@ import {
   SANS,
   Viewfinder,
 } from "./family-ui";
-import { SHOW_DEMO_TOOLS } from "./demo-tools";
 
 type SheetId = "embalm" | "casket";
 type SheetScan = "idle" | "scanning" | "checking" | "ok";
@@ -64,7 +63,8 @@ const ACTIONS: {
   },
 ];
 
-const CASKET_SAMPLES = SHOW_DEMO_TOOLS ? ["CK-2026-000123", "CK-2026-000124"] : [];
+// One-tap casket codes, as on the toe tag step.
+const CASKET_SAMPLES = ["CK-2026-000123", "CK-2026-000124"];
 
 /** Uploads read "Under review" this long on the server; refresh just after. */
 const REVIEW_REFRESH_MS = 2700;
@@ -404,26 +404,25 @@ export function ServiceHomePage() {
             <DocumentsCard />
           </Grid>
 
-          {SHOW_DEMO_TOOLS && (
-            <chakra.button
-              type="button"
-              onClick={async () => {
-                await resetDemo(token, lastName);
-                signOut();
-              }}
-              alignSelf="center"
-              h="40px"
-              px="16px"
-              border={`1px solid ${P.field}`}
-              borderRadius="12px"
-              bg={P.surface}
-              color={P.green}
-              fontSize="13px"
-              fontWeight={600}
-              cursor="pointer">
-              Restart demo
-            </chakra.button>
-          )}
+          {/* Clears this service so the demo can be run again. */}
+          <chakra.button
+            type="button"
+            onClick={async () => {
+              await resetDemo(token, lastName);
+              signOut();
+            }}
+            alignSelf="center"
+            h="40px"
+            px="16px"
+            border={`1px solid ${P.field}`}
+            borderRadius="12px"
+            bg={P.surface}
+            color={P.green}
+            fontSize="13px"
+            fontWeight={600}
+            cursor="pointer">
+            Restart demo
+          </chakra.button>
         </Flex>
       </FamilyPage>
 

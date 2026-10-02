@@ -10,7 +10,6 @@ import {
   serviceLink,
   type EmbalmRequest,
 } from "@/app/(app)/scanner/data";
-import { SHOW_DEMO_TOOLS } from "./demo-tools";
 
 /**
  * The family's side of the service: toe tag verification, then the service
@@ -422,8 +421,6 @@ export async function resetDemo(
   token: string,
   lastName: string,
 ): Promise<{ ok: true } | Fail> {
-  if (!SHOW_DEMO_TOOLS)
-    return { ok: false, error: "Not available." };
   const auth = authorize(token, lastName);
   if ("ok" in auth) return auth;
   confirmations.delete(auth.caseId);
