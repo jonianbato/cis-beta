@@ -1,5 +1,7 @@
 "use server";
 
+import { cookies } from "next/headers";
+
 import {
   embalmRequestFor,
   findCasketCode,
@@ -18,9 +20,11 @@ import {
  * has not passed it — and the home is only released once the toe tag is
  * confirmed.
  *
- * Attempts, confirmations and uploads are held in memory: this is the demo
- * seam, and a server restart clears them. When the flow moves onto real data
- * they become fields on the service record.
+ * Confirmations and uploads are the demo seam, kept in a cookie on the
+ * family's browser: on Vercel each call can land on a different serverless
+ * instance, so anything held in server memory is lost between calls. Failed
+ * attempts stay in memory, which makes the lockout best-effort there. When
+ * the flow moves onto real data these become fields on the service record.
  */
 
 const MAX_ATTEMPTS = 5;
@@ -30,10 +34,73 @@ const LOCK_MS = 15 * 60 * 1000;
 const REVIEW_MS = 2500;
 
 const failedAttempts = new Map<string, { count: number; lockedUntil: number }>();
-/** caseId -> step id -> when the family confirmed it. */
-const confirmations = new Map<string, Record<string, string>>();
-/** caseId -> document id -> the file sent and when. */
-const uploads = new Map<string, Record<string, { file: string; at: number }>>();
+
+/** One service's progress on the family's side. */
+type FamilyRecord = {
+  /** step id -> when the family confirmed it. */
+  done: Record<string, string>;
+  /** document id -> the file sent and when. */
+  uploads: Record<string, { file: string; at: number }>;
+};
+
+const RECORD_MAX_AGE_S = 30 * 24 * 60 * 60;
+
+function recordCookie(caseId: string): string {
+  return `osp-family-${caseId}`;
+}
+
+function isStringMap(value: unknown): value is Record<string, string> {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Object.values(value).every((item) => typeof item === "string")
+  );
+}
+
+function isUploadMap(value: unknown): value is FamilyRecord["uploads"] {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Object.values(value).every(
+      (item) =>
+        !!item &&
+        typeof item === "object" &&
+        typeof (item as { file?: unknown }).file === "string" &&
+        typeof (item as { at?: unknown }).at === "number",
+    )
+  );
+}
+
+/** A missing or unreadable cookie reads as a service with nothing done yet. */
+async function readRecord(caseId: string): Promise<FamilyRecord> {
+  const raw = (await cookies()).get(recordCookie(caseId))?.value;
+  if (raw) {
+    try {
+      const parsed: unknown = JSON.parse(
+        Buffer.from(raw, "base64url").toString("utf8"),
+      );
+      const { done, uploads } = (parsed ?? {}) as Partial<FamilyRecord>;
+      if (isStringMap(done) && isUploadMap(uploads)) return { done, uploads };
+    } catch {
+      // Falls through to an empty record.
+    }
+  }
+  return { done: {}, uploads: {} };
+}
+
+async function writeRecord(caseId: string, value: FamilyRecord): Promise<void> {
+  (await cookies()).set(
+    recordCookie(caseId),
+    Buffer.from(JSON.stringify(value), "utf8").toString("base64url"),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: RECORD_MAX_AGE_S,
+    },
+  );
+}
 
 /** The photo taken at retrieval. The design's stands in until uploads persist. */
 const DEMO_PHOTO = "/images/deceased-toetag.png";
@@ -236,10 +303,6 @@ function resolveTag(caseId: string, raw: string): TagDetails | Fail {
   };
 }
 
-function record(caseId: string): Record<string, string> {
-  return confirmations.get(caseId) ?? {};
-}
-
 export async function openService(
   token: string,
   lastName: string,
@@ -252,7 +315,7 @@ export async function openService(
     service: {
       caseId: auth.caseId,
       deceased: trip?.deceased ?? "",
-      confirmedAt: record(auth.caseId).tag ?? "",
+      confirmedAt: (await readRecord(auth.caseId)).done.tag ?? "",
     },
   };
 }
@@ -278,9 +341,13 @@ export async function confirmTag(
   const tag = resolveTag(auth.caseId, code);
   if ("ok" in tag) return tag;
   // A second confirmation keeps the first time: that is the one on record.
-  const done = record(auth.caseId);
+  const saved = await readRecord(auth.caseId);
+  const done = saved.done;
   const confirmedAt = done.tag ?? stamp();
-  confirmations.set(auth.caseId, { ...done, tag: confirmedAt });
+  await writeRecord(auth.caseId, {
+    ...saved,
+    done: { ...done, tag: confirmedAt },
+  });
   return { ok: true, confirmedAt };
 }
 
@@ -292,7 +359,8 @@ export async function getServiceHome(
   const auth = authorize(token, lastName);
   if ("ok" in auth) return auth;
   const caseId = auth.caseId;
-  const done = record(caseId);
+  const saved = await readRecord(caseId);
+  const done = saved.done;
   if (!done.tag)
     return { ok: false, error: "Confirm the toe tag first to open the service home." };
 
@@ -301,7 +369,7 @@ export async function getServiceHome(
   const extra = FAMILY_DEMO[caseId];
   const requested = embalmRequestFor(caseId);
   const now = Date.now();
-  const sent = uploads.get(caseId) ?? {};
+  const sent = saved.uploads;
 
   return {
     ok: true,
@@ -385,7 +453,8 @@ export async function confirmStep(
 ): Promise<{ ok: true; confirmedAt: string } | Fail> {
   const auth = authorize(token, lastName);
   if ("ok" in auth) return auth;
-  const done = record(auth.caseId);
+  const saved = await readRecord(auth.caseId);
+  const done = saved.done;
   const before = step === "embalm" ? "tag" : "embalm";
   if (!done[before])
     return { ok: false, error: "Please complete the earlier step first." };
@@ -395,7 +464,10 @@ export async function confirmStep(
       return { ok: false, error: "Scan this service's casket barcode first." };
   }
   const confirmedAt = done[step] ?? stamp();
-  confirmations.set(auth.caseId, { ...done, [step]: confirmedAt });
+  await writeRecord(auth.caseId, {
+    ...saved,
+    done: { ...done, [step]: confirmedAt },
+  });
   return { ok: true, confirmedAt };
 }
 
@@ -408,10 +480,13 @@ export async function submitDocument(
 ): Promise<{ ok: true } | Fail> {
   const auth = authorize(token, lastName);
   if ("ok" in auth) return auth;
-  const sent = uploads.get(auth.caseId) ?? {};
-  uploads.set(auth.caseId, {
-    ...sent,
-    [docId]: { file: fileName.slice(0, 120), at: Date.now() },
+  const saved = await readRecord(auth.caseId);
+  await writeRecord(auth.caseId, {
+    ...saved,
+    uploads: {
+      ...saved.uploads,
+      [docId]: { file: fileName.slice(0, 120), at: Date.now() },
+    },
   });
   return { ok: true };
 }
@@ -423,7 +498,6 @@ export async function resetDemo(
 ): Promise<{ ok: true } | Fail> {
   const auth = authorize(token, lastName);
   if ("ok" in auth) return auth;
-  confirmations.delete(auth.caseId);
-  uploads.delete(auth.caseId);
+  (await cookies()).delete(recordCookie(auth.caseId));
   return { ok: true };
 }

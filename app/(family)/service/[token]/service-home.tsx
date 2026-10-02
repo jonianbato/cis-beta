@@ -609,7 +609,8 @@ export function ServiceHomePage() {
                     {sheetDef.consent}
                   </Text>
                 </chakra.label>
-                {error && scan === "ok" && (
+                {/* The embalming sheet has no scan, so its errors show as they come. */}
+                {error && (sheet === "embalm" || scan === "ok") && (
                   <Text fontSize="13px" color={P.errText} role="alert">
                     {error}
                   </Text>
