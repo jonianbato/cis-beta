@@ -476,7 +476,7 @@ export default function PersonnelScan() {
                         : s.pipeline === "embalm"
                           ? "Do not proceed with embalming"
                           : "Do not leave the chapel"
-                }; notify your supervisor.`,
+                }; notify the office.`,
               ),
               log: [entry, ...s.log].slice(0, LOG_LIMIT),
             };
@@ -498,7 +498,7 @@ export default function PersonnelScan() {
               };
               return {
                 ...reject(
-                  `MISMATCH — ${doc.code} is for ${doc.deceased}, but toe tag ${s.tag?.code ?? ""} is for ${s.trip?.deceased}. Do not encasket; notify your supervisor.`,
+                  `MISMATCH — ${doc.code} is for ${doc.deceased}, but toe tag ${s.tag?.code ?? ""} is for ${s.trip?.deceased}. Do not encasket; notify the office.`,
                 ),
                 log: [entry, ...s.log].slice(0, LOG_LIMIT),
               };
@@ -516,7 +516,7 @@ export default function PersonnelScan() {
             };
             return {
               ...reject(
-                `MISMATCH — ${doc.code} is for ${doc.deceased}, but trip ticket ${s.trip?.code} is for ${s.trip?.deceased}. Check that the deceased in the casket matches the trip ticket. Do not leave the chapel; notify your supervisor.`,
+                `MISMATCH — ${doc.code} is for ${doc.deceased}, but trip ticket ${s.trip?.code} is for ${s.trip?.deceased}. Check that the deceased in the casket matches the trip ticket. Do not leave the chapel; notify the office.`,
               ),
               log: [entry, ...s.log].slice(0, LOG_LIMIT),
             };
@@ -958,12 +958,12 @@ export default function PersonnelScan() {
           }
         : {
             primary: {
-              label: "Stop & Notify Supervisor",
+              label: "Stop & Notify the Office",
               tone: "danger",
               onClick: () => {
-                addLog(`Supervisor notified · ${trip?.code}`, "bad");
+                addLog(`Office notified · ${trip?.code}`, "bad");
                 go("home", { tag: null });
-                flash("Supervisor notified. Hold the process until resolved.");
+                flash("Office notified. Hold the process until resolved.");
               },
             },
             secondary: {
