@@ -97,6 +97,19 @@ function durationLabel(start: string, end: string): string {
   return `${Math.floor(total / 60)}h ${total % 60}m`;
 }
 
+/**
+ * iOS Safari draws time inputs with a native control that ignores the width
+ * it is given; dropping the native appearance makes it fit its column.
+ */
+const timeField = {
+  display: "block",
+  minW: "0",
+  appearance: "none",
+  css: {
+    "&::-webkit-date-and-time-value": { textAlign: "left" },
+  },
+} as const;
+
 function FieldLabel({ children }: { children: string }) {
   return <Text {...fieldLabel}>{children}</Text>;
 }
@@ -257,30 +270,37 @@ export function EmbalmScreen({
         </chakra.select>
       </Box>
 
-      <Grid templateColumns="1fr 1fr 70px" gap="10px" alignItems="end">
-        <Box>
+      {/* minmax(0, …) and minW 0 let the time fields shrink: iOS Safari gives
+          them a wide intrinsic size that otherwise spills over the next one. */}
+      <Grid
+        templateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
+        gap="10px"
+        alignItems="end">
+        <Box minW="0">
           <FieldLabel>Start</FieldLabel>
           <chakra.input
             {...field}
+            {...timeField}
             type="time"
             value={value.start}
             onChange={(event) => patch({ start: event.target.value })}
           />
         </Box>
-        <Box>
+        <Box minW="0">
           <FieldLabel>End</FieldLabel>
           <chakra.input
             {...field}
+            {...timeField}
             type="time"
             value={value.end}
             onChange={(event) => patch({ end: event.target.value })}
           />
         </Box>
-        <Flex h="44px" direction="column" justify="center">
+        <Flex h="44px" minW="56px" direction="column" justify="center">
           <Text fontSize="10px" fontWeight={700} color={C.fainter}>
             Duration
           </Text>
-          <Text fontSize="13px" fontWeight={800} color={C.ink}>
+          <Text fontSize="13px" fontWeight={800} color={C.ink} whiteSpace="nowrap">
             {durationLabel(value.start, value.end)}
           </Text>
         </Flex>
