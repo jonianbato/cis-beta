@@ -89,7 +89,14 @@ export function FamilyPage({ children }: { children: React.ReactNode }) {
       maxW="960px"
       mx="auto"
       px={{ base: "16px", lg: "24px" }}
-      py={{ base: "16px", lg: "24px" }}
+      pt={{ base: "16px", lg: "24px" }}
+      // On phones the shell's fixed bottom bar (62px plus the home-indicator
+      // inset) slides back in on any upward scroll — including iOS's bounce at
+      // the end of the page — so the last control needs room to clear it.
+      pb={{
+        base: "calc(16px + 62px + env(safe-area-inset-bottom, 0px))",
+        lg: "24px",
+      }}
       css={{ "& button": { fontFamily: "inherit" } }}>
       {children}
     </Box>
