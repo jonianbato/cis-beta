@@ -99,14 +99,23 @@ function durationLabel(start: string, end: string): string {
 
 /**
  * iOS Safari draws time inputs with a native control that ignores the width
- * it is given; dropping the native appearance makes it fit its column.
+ * it is given; dropping the native appearance makes it fit its column. Without
+ * it the value sits top-left with a margin under it, so the line height
+ * (44px less the 1.5px borders) centres it again.
  */
 const timeField = {
   display: "block",
   minW: "0",
   appearance: "none",
+  py: "0",
+  lineHeight: "41px",
   css: {
-    "&::-webkit-date-and-time-value": { textAlign: "left" },
+    "&::-webkit-date-and-time-value": {
+      textAlign: "left",
+      margin: "0",
+      lineHeight: "41px",
+    },
+    "&::-webkit-datetime-edit": { padding: "0", lineHeight: "41px" },
   },
 } as const;
 
