@@ -459,8 +459,8 @@ export const PIPELINES: Record<Pipeline, PipelineStep[]> = {
     {
       key: "readyConfirm",
       label: "Ready for viewing confirmation",
-      hint: "CM/FCR scans the toe tag QR and takes a photo of the deceased in the casket",
-      tasks: ["receiveTag", "photo"],
+      hint: "CM/FCR scans the casket barcode and takes a photo of the deceased in the casket",
+      tasks: ["scanCasket", "photo"],
       otp: false,
       doneLabel: "Ready for viewing",
     },

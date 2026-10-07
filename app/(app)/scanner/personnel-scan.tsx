@@ -448,17 +448,14 @@ export default function PersonnelScan() {
             // A mismatch here is the whole point of the check, so it goes on
             // the log even though the operator never left the screen.
             const receiving = s.screen === "receiveTag";
-            const confirmingReady = s.stepKey === "readyConfirm";
             const encasketing = s.stepKey === "encasket";
-            const where = confirmingReady
-              ? "at ready-for-viewing confirmation"
-              : receiving
-                ? "at chapel receiving"
-                : encasketing
-                  ? "before encasketing"
-                  : s.pipeline === "embalm"
-                    ? "before embalming"
-                    : "at departure";
+            const where = receiving
+              ? "at chapel receiving"
+              : encasketing
+                ? "before encasketing"
+                : s.pipeline === "embalm"
+                  ? "before embalming"
+                  : "at departure";
             const entry: LogEntry = {
               text: `Mismatch ${where} · ${doc.code} ≠ ${s.trip?.caseId}`,
               tone: "bad",
@@ -467,15 +464,13 @@ export default function PersonnelScan() {
             return {
               ...reject(
                 `MISMATCH — ${doc.code} is for ${doc.deceased}. ${
-                  confirmingReady
-                    ? "Do not open the casket for viewing"
-                    : receiving
-                      ? "Do not receive the deceased"
-                      : encasketing
-                        ? "Do not encasket"
-                        : s.pipeline === "embalm"
-                          ? "Do not proceed with embalming"
-                          : "Do not leave the chapel"
+                  receiving
+                    ? "Do not receive the deceased"
+                    : encasketing
+                      ? "Do not encasket"
+                      : s.pipeline === "embalm"
+                        ? "Do not proceed with embalming"
+                        : "Do not leave the chapel"
                 }; notify the office.`,
               ),
               log: [entry, ...s.log].slice(0, LOG_LIMIT),
@@ -488,6 +483,20 @@ export default function PersonnelScan() {
           if (!doc || doc.kind !== "ck")
             return reject("Scan the barcode on the casket tag (CK-…).");
           if (!s.trip || doc.caseId !== s.trip.caseId) {
+            if (s.stepKey === "readyConfirm") {
+              // The CM/FCR's check before the casket is opened for viewing.
+              const entry: LogEntry = {
+                text: `Casket mismatch at ready-for-viewing confirmation · ${doc.code} ≠ ${s.trip?.caseId}`,
+                tone: "bad",
+                at: stamp(),
+              };
+              return {
+                ...reject(
+                  `MISMATCH — ${doc.code} is for ${doc.deceased}, but this service is for ${s.trip?.deceased}. Do not open the casket for viewing; notify the office.`,
+                ),
+                log: [entry, ...s.log].slice(0, LOG_LIMIT),
+              };
+            }
             if (s.stepKey === "encasket") {
               // The second casket scan is the last check before the deceased
               // goes in, so a wrong one is logged like a toe-tag mismatch.
@@ -806,15 +815,17 @@ export default function PersonnelScan() {
       : scanKind === "casket"
       ? viewing
         ? `Before leaving the chapel, scan the casket barcode. It must be ${who}'s casket to match trip ticket ${trip?.code ?? ""}.`
+        : confirmingReady
+          ? `${state.receiverRole}${
+              state.receiverName.trim() ? ` ${state.receiverName.trim()}` : ""
+            }: confirm ${who} is ready for viewing by scanning the casket barcode.`
         : encasketing
           ? `Scan the casket barcode again. It must be ${who}'s casket to match toe tag ${tag?.code ?? ""}.`
           : `Scan the barcode on the casket tag for ${who} · ${trip?.casket ?? ""}`
       : state.screen === "receiveTag"
         ? `${state.receiverRole}${
             state.receiverName.trim() ? ` ${state.receiverName.trim()}` : ""
-          }: confirm ${
-            confirmingReady ? `${who} is ready for viewing` : `receiving ${who}`
-          } by scanning the toe tag QR.`
+          }: confirm receiving ${who} by scanning the toe tag QR.`
         : scanKind === "checkTag"
         ? `${
             encasketing
@@ -850,6 +861,8 @@ export default function PersonnelScan() {
       "Scan Casket Barcode",
       viewing
         ? "Casket matching · before the trip"
+        : confirmingReady
+          ? `Ready for viewing · ${state.receiverRole}`
         : encasketing
           ? "Encasketing · casket matching"
           : (trip?.deceased ?? ""),
@@ -872,7 +885,7 @@ export default function PersonnelScan() {
     ],
     receiveTag: [
       "Scan Toe Tag",
-      `${confirmingReady ? "Ready for viewing" : "Receiving confirmation"} · ${state.receiverRole}`,
+      `Receiving confirmation · ${state.receiverRole}`,
     ],
     depart: [
       viewing ? "Depart to Viewing Venue" : "Depart to Chapel",
@@ -1106,6 +1119,12 @@ export default function PersonnelScan() {
                 completeTask();
               },
             }
+          : confirmingReady
+            ? {
+                label: "Confirm casket",
+                enabled: !!state.scanned,
+                onClick: completeTask,
+              }
           : encasketing
             ? {
                 label: "Confirm match · encasket",
@@ -1396,7 +1415,7 @@ export default function PersonnelScan() {
                 />
               ) : curStep?.key === "endorseCm" ? (
                 <EndorseScreen
-                  intro={`Encasketing is done. Endorse ${trip.deceased} to the CM/FCR on duty. They confirm the deceased is ready for viewing in the next step by scanning the toe tag QR and taking a photo.`}
+                  intro={`Encasketing is done. Endorse ${trip.deceased} to the CM/FCR on duty. They confirm the deceased is ready for viewing in the next step by scanning the casket barcode and taking a photo.`}
                   picker={{
                     roles: [RECEIVER_ROLES[0]],
                     role: state.receiverRole,
