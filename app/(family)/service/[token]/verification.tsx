@@ -435,7 +435,7 @@ export function Verification({
                   px="8px"
                   py="4px"
                   borderRadius="6px">
-                  Captured at retrieval · {tag.retrieved}
+                  Captured at toe tagging
                 </Text>
               </Box>
               <Flex px="16px" py="18px" direction="column" gap="4px">
@@ -466,8 +466,6 @@ export function Verification({
                   py="10px"
                   rows={[
                     ["Service ID", tag.caseId],
-                    ["Chapel", tag.chapel],
-                    ["Retrieved", tag.retrieved],
                   ]}
                 />
               </Box>

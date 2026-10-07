@@ -161,13 +161,15 @@ export type ServiceSummary = {
   confirmedAt: string;
 };
 
+/**
+ * What the family checks before retrieval: the deceased is still at the
+ * place of death, so there is no chapel or retrieval time to show yet.
+ */
 export type TagDetails = {
   code: string;
   caseId: string;
   deceased: string;
   life: string;
-  chapel: string;
-  retrieved: string;
   photoUrl: string;
 };
 
@@ -233,20 +235,6 @@ function longDate(value: string | undefined): string {
       });
 }
 
-/** "2026-09-12 08:30 AM" -> "Sep 12, 2026 · 8:30 AM". */
-function shortDateTime(value: string | undefined): string {
-  if (!value) return "—";
-  const [day, ...time] = value.split(" ");
-  const date = new Date(`${day}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  const label = date.toLocaleDateString("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  return `${label} · ${time.join(" ").replace(/^0/, "")}`;
-}
-
 function authorize(token: string, lastName: string): { caseId: string } | Fail {
   const link = serviceLink(token);
   if (!link) return { ok: false, error: "This service link is not valid." };
@@ -307,8 +295,6 @@ function resolveTag(caseId: string, raw: string): TagDetails | Fail {
     caseId: doc.caseId,
     deceased: doc.deceased ?? "—",
     life: `${longDate(doc.dob)} – ${longDate(doc.dod)}`,
-    chapel: chapelOf(doc.caseId),
-    retrieved: shortDateTime(doc.departure),
     photoUrl: DEMO_PHOTO,
   };
 }
