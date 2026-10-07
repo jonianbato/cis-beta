@@ -1,15 +1,90 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useRef, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import { Camera, RotateCcw, ScanQrCode } from "lucide-react";
+import { Camera, Minus, Plus, RotateCcw, ScanQrCode } from "lucide-react";
 import {
   cameraMessage,
   canRetryCamera,
   type CameraState,
+  type ZoomControl,
 } from "@/lib/use-code-scanner";
 import { C, MONO } from "./theme";
 import { ErrorNote, Panel, TickBadge } from "./chrome";
+
+/** How far one tap of − or + moves the zoom. */
+const ZOOM_STEP = 0.5;
+
+/** One round − / + button on the zoom pill. */
+function ZoomButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <chakra.button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      w="32px"
+      h="32px"
+      borderRadius="full"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      color={C.onFill}
+      cursor="pointer"
+      _hover={{ bg: C.veilLine }}
+      _disabled={{ opacity: 0.35, cursor: "default", bg: "transparent" }}>
+      {children}
+    </chakra.button>
+  );
+}
+
+/**
+ * Two-finger pinch on the viewfinder. Tracks the active pointers and scales
+ * the zoom by how far apart they have moved since the pinch began.
+ */
+function usePinchZoom(zoom: ZoomControl | null) {
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const start = useRef<{ distance: number; level: number } | null>(null);
+
+  const spread = () => {
+    const [a, b] = [...pointers.current.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+
+  const end = (event: PointerEvent) => {
+    pointers.current.delete(event.pointerId);
+    if (pointers.current.size < 2) start.current = null;
+  };
+
+  return {
+    onPointerDown: (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.current.size === 2 && zoom) {
+        start.current = { distance: spread(), level: zoom.level };
+      }
+    },
+    onPointerMove: (event: PointerEvent) => {
+      if (!pointers.current.has(event.pointerId)) return;
+      pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (start.current && zoom && pointers.current.size === 2) {
+        zoom.set(start.current.level * (spread() / start.current.distance));
+      }
+    },
+    onPointerUp: end,
+    onPointerCancel: end,
+  };
+}
 
 /** One corner of the viewfinder bracket. */
 function Corner({
@@ -54,6 +129,7 @@ export function ScanScreen({
   hint,
   videoRef,
   camera,
+  zoom,
   onRetryCamera,
   onRescan,
   scannedCode,
@@ -69,6 +145,8 @@ export function ScanScreen({
   hint: string;
   videoRef: RefObject<HTMLVideoElement | null>;
   camera: CameraState;
+  /** Present while the camera is live. */
+  zoom: ZoomControl | null;
   onRetryCamera: () => void;
   /** Drops the accepted code and brings the viewfinder back. */
   onRescan: () => void;
@@ -83,6 +161,8 @@ export function ScanScreen({
   onSubmitManual: () => void;
   onUseSample: (code: string) => void;
 }) {
+  const pinch = usePinchZoom(zoom);
+
   if (scannedCode) {
     return (
       <>
@@ -146,7 +226,10 @@ export function ScanScreen({
         aspectRatio="1 / 1"
         borderRadius="18px"
         overflow="hidden"
-        bg={C.ink}>
+        bg={C.viewfinder}
+        // Vertical swipes still scroll the page; two fingers pinch-zoom.
+        touchAction="pan-y"
+        {...pinch}>
         <chakra.video
           ref={videoRef}
           muted
@@ -155,6 +238,13 @@ export function ScanScreen({
           h="full"
           objectFit="cover"
           display={camera === "on" ? "block" : "none"}
+          // Digital zoom: the hook reads the same centre crop it scales to.
+          transform={
+            zoom && !zoom.hardware && zoom.level > 1
+              ? `scale(${zoom.level})`
+              : undefined
+          }
+          transition="transform 0.12s ease-out"
         />
 
         {camera !== "on" && (
@@ -165,7 +255,7 @@ export function ScanScreen({
             align="center"
             justify="center"
             gap="8px"
-            color={C.mint}
+            color={C.viewfinderInk}
             p="24px"
             textAlign="center">
             <Camera size={34} strokeWidth={1.6} />
@@ -184,8 +274,8 @@ export function ScanScreen({
                 py="6px"
                 borderRadius="20px"
                 border="1px solid"
-                borderColor={C.mint}
-                color={C.mint}
+                borderColor={C.viewfinderInk}
+                color={C.viewfinderInk}
                 fontSize="11.5px"
                 fontWeight={800}
                 cursor="pointer">
@@ -212,6 +302,45 @@ export function ScanScreen({
             animation="osp-scanline 2.4s ease-in-out infinite"
           />
         </Box>
+
+        {zoom && (
+          <Flex
+            position="absolute"
+            bottom="10px"
+            left="50%"
+            transform="translateX(-50%)"
+            align="center"
+            gap="2px"
+            p="3px"
+            borderRadius="full"
+            bg={C.veil}
+            border="1px solid"
+            borderColor={C.veilLine}
+            backdropFilter="blur(6px)">
+            <ZoomButton
+              label="Zoom out"
+              disabled={zoom.level <= zoom.min}
+              onClick={() => zoom.set(zoom.level - ZOOM_STEP)}>
+              <Minus size={16} strokeWidth={2.4} />
+            </ZoomButton>
+            <Text
+              aria-live="polite"
+              minW="40px"
+              textAlign="center"
+              fontSize="12px"
+              fontWeight={800}
+              fontFamily={MONO}
+              color={C.onFill}>
+              {zoom.level.toFixed(1)}×
+            </Text>
+            <ZoomButton
+              label="Zoom in"
+              disabled={zoom.level >= zoom.max}
+              onClick={() => zoom.set(zoom.level + ZOOM_STEP)}>
+              <Plus size={16} strokeWidth={2.4} />
+            </ZoomButton>
+          </Flex>
+        )}
       </Box>
 
       {error && <ErrorNote>{error}</ErrorNote>}

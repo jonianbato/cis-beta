@@ -49,6 +49,14 @@ export const C = {
   amberLine: v("amber-line"),
   amberInk: v("amber-ink"),
   amberIcon: v("amber-icon"),
+
+  /** Backdrop for controls over the live camera; text on it is onFill. */
+  veil: v("veil"),
+  veilLine: v("veil-line"),
+
+  /** The viewfinder box and the camera status shown in it. */
+  viewfinder: v("viewfinder"),
+  viewfinderInk: v("viewfinder-ink"),
 } as const;
 
 /** The hairline-bordered panel every grouped block in the flow sits on. */

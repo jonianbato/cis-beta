@@ -10,7 +10,9 @@ import type { BarcodeFormat } from "barcode-detector/ponyfill";
 type DetectedBarcode = { rawValue: string };
 
 type BarcodeDetectorLike = {
-  detect(source: HTMLVideoElement): Promise<DetectedBarcode[]>;
+  detect(
+    source: HTMLVideoElement | HTMLCanvasElement,
+  ): Promise<DetectedBarcode[]>;
 };
 
 type BarcodeDetectorConstructor = {
@@ -30,6 +32,35 @@ const FORMATS = [
 ];
 
 const DETECT_INTERVAL_MS = 250;
+
+/** Ceiling for zoom — past this the picture is too grainy to read anyway. */
+const MAX_ZOOM = 5;
+
+/**
+ * How far the viewfinder can zoom. `hardware` means the camera itself zooms
+ * (Chrome on Android exposes this); otherwise the zoom is digital — the
+ * screen scales the preview with `transform: scale(level)` and the detector
+ * reads the same centre crop, so what the operator frames is what is read.
+ */
+export type ZoomControl = {
+  level: number;
+  min: number;
+  max: number;
+  hardware: boolean;
+  set: (level: number) => void;
+};
+
+/** Zoom range the camera track reports, when it can zoom at all. */
+type ZoomCapability = { min: number; max: number };
+
+function trackZoom(track: MediaStreamTrack | undefined): ZoomCapability | null {
+  const caps = track?.getCapabilities?.() as
+    | (MediaTrackCapabilities & { zoom?: ZoomCapability })
+    | undefined;
+  const zoom = caps?.zoom;
+  if (!zoom || typeof zoom.max !== "number" || zoom.max <= zoom.min) return null;
+  return zoom;
+}
 
 export type CameraState =
   | "idle"
@@ -96,8 +127,13 @@ export function useCodeScanner({
   videoRef: RefObject<HTMLVideoElement | null>;
   active: boolean;
   onCode: (value: string) => void;
-}): { camera: CameraState; retry: () => void } {
+}): { camera: CameraState; retry: () => void; zoom: ZoomControl | null } {
   const [state, setState] = useState<CameraState>("idle");
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [hardwareZoom, setHardwareZoom] = useState<ZoomCapability | null>(null);
+  // Read by the detect loop and by set(), which outlive a single render.
+  const zoomRef = useRef({ level: 1, hardware: false });
+  const trackRef = useRef<MediaStreamTrack | null>(null);
   // Bumped by retry() to rerun the effect after the operator fixes a failure.
   const [attempt, setAttempt] = useState(0);
 
@@ -161,6 +197,14 @@ export function useCodeScanner({
 
       stream = opened;
       video.srcObject = opened;
+
+      // Each camera start begins unzoomed.
+      const track = opened.getVideoTracks()[0];
+      const hardware = trackZoom(track);
+      trackRef.current = track ?? null;
+      zoomRef.current = { level: hardware?.min ?? 1, hardware: !!hardware };
+      setHardwareZoom(hardware);
+      setZoomLevel(hardware?.min ?? 1);
       try {
         await video.play();
       } catch {
@@ -177,13 +221,29 @@ export function useCodeScanner({
       }
       setState("on");
 
+      // Digital zoom reads the centre crop, scaled back up to full size.
+      const canvas = document.createElement("canvas");
+      const frameFor = (current: HTMLVideoElement) => {
+        const { level, hardware } = zoomRef.current;
+        const w = current.videoWidth;
+        const h = current.videoHeight;
+        const ctx = level > 1 && !hardware && w && h ? canvas.getContext("2d") : null;
+        if (!ctx) return current;
+        canvas.width = w;
+        canvas.height = h;
+        const sw = w / level;
+        const sh = h / level;
+        ctx.drawImage(current, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, w, h);
+        return canvas;
+      };
+
       // A chained timeout rather than an interval: the wasm decoder can take
       // longer than one tick, and overlapping detects would pile up.
       const tick = async () => {
         const current = videoRef.current;
         if (current && current.readyState >= current.HAVE_CURRENT_DATA) {
           try {
-            const codes = await detector.detect(current);
+            const codes = await detector.detect(frameFor(current));
             const value = codes.find((code) => code.rawValue)?.rawValue;
             if (value && !cancelled) onCodeRef.current(value);
           } catch {
@@ -203,12 +263,36 @@ export function useCodeScanner({
       if (timer !== null) clearTimeout(timer);
       stream?.getTracks().forEach((track) => track.stop());
       stream = null;
+      trackRef.current = null;
+      zoomRef.current = { level: 1, hardware: false };
       if (videoEl) videoEl.srcObject = null;
       setState("idle");
+      setZoomLevel(1);
+      setHardwareZoom(null);
     };
   }, [active, attempt, videoRef]);
 
-  return { camera: state, retry: () => setAttempt((n) => n + 1) };
+  const min = hardwareZoom?.min ?? 1;
+  const max = Math.min(hardwareZoom?.max ?? MAX_ZOOM, MAX_ZOOM);
+  const setZoom = (next: number) => {
+    const level = Math.round(Math.min(max, Math.max(min, next)) * 10) / 10;
+    zoomRef.current = { ...zoomRef.current, level };
+    setZoomLevel(level);
+    if (zoomRef.current.hardware) {
+      const constraint = { zoom: level } as MediaTrackConstraintSet;
+      // A rejected constraint just leaves the lens where it was.
+      trackRef.current?.applyConstraints({ advanced: [constraint] }).catch(() => {});
+    }
+  };
+
+  return {
+    camera: state,
+    retry: () => setAttempt((n) => n + 1),
+    zoom:
+      state === "on"
+        ? { level: zoomLevel, min, max, hardware: !!hardwareZoom, set: setZoom }
+        : null,
+  };
 }
 
 /** Failures the operator can fix and then try the camera again. */

@@ -51,6 +51,14 @@ html {
   --scan-amber-line: #f2e3bc;
   --scan-amber-ink: #6b4e0c;
   --scan-amber-icon: #8a6410;
+
+  /* Backdrop for controls laid over the live camera picture. */
+  --scan-veil: rgba(15, 44, 28, 0.62);
+  --scan-veil-line: rgba(255, 255, 255, 0.22);
+
+  /* The viewfinder behind the camera picture — dark in both modes. */
+  --scan-viewfinder: #0f2c1c;
+  --scan-viewfinder-ink: #cfe8d9;
 }
 
 .dark {
@@ -90,6 +98,12 @@ html {
   --scan-amber-line: rgba(255, 193, 69, 0.28);
   --scan-amber-ink: #ffc145;
   --scan-amber-icon: #ffc145;
+
+  --scan-veil: rgba(13, 25, 19, 0.72);
+  --scan-veil-line: rgba(255, 255, 255, 0.14);
+
+  --scan-viewfinder: #13221b;
+  --scan-viewfinder-ink: #abc7b9;
 }
 
 /* The family service link palette (read through

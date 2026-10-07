@@ -576,7 +576,7 @@ export default function PersonnelScan() {
 
   // The camera only runs while the viewfinder is up. Once a code is accepted
   // the record takes its place, and "Scan another QR" brings it back.
-  const { camera, retry: retryCamera } = useCodeScanner({
+  const { camera, retry: retryCamera, zoom } = useCodeScanner({
     videoRef,
     active: SCAN_SCREENS.includes(state.screen) && !state.scanned,
     onCode: (raw) => handleCode(raw, true),
@@ -1310,6 +1310,7 @@ export default function PersonnelScan() {
                 hint={scanHint}
                 videoRef={videoRef}
                 camera={camera}
+                zoom={zoom}
                 onRetryCamera={retryCamera}
                 onRescan={rescan}
                 scannedCode={state.scanned}
